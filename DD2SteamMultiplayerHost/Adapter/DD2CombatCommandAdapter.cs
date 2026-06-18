@@ -664,6 +664,7 @@ namespace DD2SteamMultiplayerHost.Adapter
             {
                 ActorGuid = actor.ActorGuid.ToString(),
                 ActorDataId = string.IsNullOrEmpty(actor.ActorDataId) ? "[unknown]" : actor.ActorDataId,
+                DisplayName = GetActorDisplayName(actor),
                 TeamIndex = actor.TeamIndex,
                 TeamPosition = actor.TeamPosition,
                 IsLiving = actor.IsLiving,
@@ -920,6 +921,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                 snapshot.PartyInBattle + ":" +
                 snapshot.HasCurrentActor + ":" +
                 snapshot.CurrentActorGuid + ":" +
+                snapshot.CurrentActorName + ":" +
                 snapshot.CurrentFirstTurnActorGuid + ":" +
                 snapshot.CurrentLastTurnActorGuid + ":" +
                 DescribeSelectedSkill(snapshot.SelectedSkill) + ":" +
@@ -927,6 +929,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                     entry.Index + "," +
                     entry.ActorGuid + "," +
                     entry.ActorDataId + "," +
+                    entry.DisplayName + "," +
                     entry.TeamIndex + "," +
                     entry.TeamPosition + "," +
                     entry.IsCurrentActor + "," +
@@ -936,6 +939,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                 string.Join("|", (snapshot.Actors ?? Array.Empty<ActorSnapshotPayload>()).Select(actor =>
                     actor.ActorGuid + "," +
                     actor.ActorDataId + "," +
+                    actor.DisplayName + "," +
                     actor.TeamIndex + "," +
                     actor.TeamPosition + "," +
                     actor.IsLiving + "," +
@@ -1214,8 +1218,38 @@ namespace DD2SteamMultiplayerHost.Adapter
                 return "[missing]";
             }
 
-            string actorDataId = string.IsNullOrEmpty(actor.ActorDataId) ? "[unknown]" : actor.ActorDataId;
-            return actor.ActorGuid + "/" + actorDataId + "/team=" + actor.TeamIndex + "/pos=" + actor.TeamPosition;
+            string actorDataId = string.IsNullOrEmpty(actor.ActorDataId) ? null : actor.ActorDataId;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(actor.ActorName) &&
+                    !string.Equals(actor.ActorName, actorDataId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return actor.ActorName;
+                }
+            }
+            catch
+            {
+            }
+
+            if (!string.IsNullOrWhiteSpace(actorDataId))
+            {
+                try
+                {
+                    string className = ActorDescription.GetClassName(actorDataId);
+                    if (!string.IsNullOrWhiteSpace(className) &&
+                        !string.Equals(className, actorDataId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return className;
+                    }
+                }
+                catch
+                {
+                }
+
+                return actorDataId;
+            }
+
+            return actor.ActorGuid == 0U ? "[actor]" : actor.ActorGuid.ToString();
         }
 
         private static string GetSkillDisplayName(string skillId)

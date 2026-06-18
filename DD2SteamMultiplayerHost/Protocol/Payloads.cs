@@ -460,6 +460,8 @@ namespace DD2SteamMultiplayerHost.Protocol
 
         public string ActorDataId { get; set; }
 
+        public string DisplayName { get; set; }
+
         public int TeamIndex { get; set; }
 
         public int TeamPosition { get; set; }

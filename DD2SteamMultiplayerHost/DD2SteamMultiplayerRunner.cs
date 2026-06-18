@@ -108,6 +108,7 @@ namespace DD2SteamMultiplayerHost
             RegexOptions.IgnoreCase);
         private static readonly Regex TooltipWordRegex = new Regex("\\s+|\\S+");
         private static readonly object ArenaBattleModifierPatchLock = new object();
+        private static readonly object NativeHotkeyBlockPatchLock = new object();
         private static readonly ArenaTorchConfessionProfile[] ArenaTorchConfessionProfiles =
         {
             new ArenaTorchConfessionProfile("brain", "Denial", "否认"),
@@ -119,6 +120,8 @@ namespace DD2SteamMultiplayerHost
         private static DD2SteamMultiplayerRunner _activeArenaRunner;
         private static bool _arenaBattleModifierPatchInstalled;
         private static bool _arenaBattleModifierPatchFailedLogged;
+        private static bool _nativeHotkeyBlockPatchInstalled;
+        private static bool _nativeHotkeyBlockPatchFailedLogged;
         private static object _arenaBattleModifierHarmony;
 
         private bool _steamIdentityLogged;
@@ -717,6 +720,7 @@ namespace DD2SteamMultiplayerHost
             HostLog.Write("Host runner started.");
             _activeArenaRunner = this;
             EnsureArenaBattleModifierPatchInstalled();
+            EnsureNativeHotkeyBlockPatchInstalled();
             TryLogSteamIdentity();
             _messageTransport = new SteamMessageTransport();
             _lobbyClient = new SteamLobbyClient();
@@ -1179,6 +1183,82 @@ namespace DD2SteamMultiplayerHost
                     }
                 }
             }
+        }
+
+        private static void EnsureNativeHotkeyBlockPatchInstalled()
+        {
+            if (_nativeHotkeyBlockPatchInstalled)
+            {
+                return;
+            }
+
+            lock (NativeHotkeyBlockPatchLock)
+            {
+                if (_nativeHotkeyBlockPatchInstalled)
+                {
+                    return;
+                }
+
+                try
+                {
+                    Type userReportingHotkeyType = ResolveLoadedType("UserReportingHotkeyBhv");
+                    MethodInfo screenshotOriginal = userReportingHotkeyType == null
+                        ? null
+                        : userReportingHotkeyType.GetMethod(
+                            "OnScreenshotHotkeyPressed",
+                            BindingFlags.Instance | BindingFlags.NonPublic);
+                    MethodInfo reportOriginal = userReportingHotkeyType == null
+                        ? null
+                        : userReportingHotkeyType.GetMethod(
+                            "OnUserReportHotkeyPressed",
+                            BindingFlags.Instance | BindingFlags.NonPublic);
+                    MethodInfo blockPrefix = typeof(DD2SteamMultiplayerRunner).GetMethod(
+                        nameof(BlockNativeScreenshotAndReportHotkeyPrefix),
+                        BindingFlags.NonPublic | BindingFlags.Static);
+
+                    if (screenshotOriginal == null || reportOriginal == null || blockPrefix == null)
+                    {
+                        throw new MissingMethodException("Could not find native screenshot/report hotkey methods.");
+                    }
+
+                    PatchWithHarmonyPrefix(screenshotOriginal, blockPrefix);
+                    PatchWithHarmonyPrefix(reportOriginal, blockPrefix);
+                    _nativeHotkeyBlockPatchInstalled = true;
+                    HostLog.Write("[hotkeys] Native F5/F6 screenshot/report hotkeys blocked.");
+                }
+                catch (Exception ex)
+                {
+                    if (!_nativeHotkeyBlockPatchFailedLogged)
+                    {
+                        _nativeHotkeyBlockPatchFailedLogged = true;
+                        HostLog.Write("[hotkeys] Failed to block native F5/F6 screenshot/report hotkeys: " + ex);
+                    }
+                }
+            }
+        }
+
+        private static Type ResolveLoadedType(string fullName)
+        {
+            if (string.IsNullOrWhiteSpace(fullName))
+            {
+                return null;
+            }
+
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type type = assembly.GetType(fullName, false);
+                if (type != null)
+                {
+                    return type;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool BlockNativeScreenshotAndReportHotkeyPrefix()
+        {
+            return false;
         }
 
         private static void PatchWithHarmonyPrefix(MethodInfo original, MethodInfo prefix)
@@ -2049,19 +2129,116 @@ namespace DD2SteamMultiplayerHost
                     " pass=" + isPass;
             GUI.Label(new Rect(area.x + 12f, area.y + 116f, area.width - 24f, 38f), inputText, body);
 
-            float turnOrderHeight = Mathf.Clamp(area.height * 0.22f, 78f, 116f);
+            float turnOrderHeight = Mathf.Clamp(area.height * 0.24f, 96f, 128f);
             Rect logRect = new Rect(area.x + 12f, area.y + 164f, area.width - 24f, area.height - turnOrderHeight - 176f);
             DrawDamageMeterCombatLog(logRect, damageMeterSnapshot);
 
-            IList<CombatTurnOrderEntryPayload> turnOrder = snapshot.TurnOrder ?? Array.Empty<CombatTurnOrderEntryPayload>();
             Rect turnRect = new Rect(area.x + 12f, area.yMax - turnOrderHeight - 8f, area.width - 24f, turnOrderHeight);
-            GUI.Label(new Rect(turnRect.x, turnRect.y, turnRect.width, 22f), "Turn Order", CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.UpperCenter));
-            float y = turnRect.y + 24f;
-            foreach (CombatTurnOrderEntryPayload entry in turnOrder.OrderBy(entry => entry.Index).Take(4))
+            DrawMirrorHudTurnOrder(turnRect, snapshot);
+        }
+
+        private void DrawMirrorHudTurnOrder(Rect area, CombatSnapshotPayload snapshot)
+        {
+            if (area.height < 72f || area.width < 160f)
             {
-                GUI.Label(new Rect(turnRect.x + 6f, y, turnRect.width - 12f, 18f), FormatCombatTurnOrderEntry(entry), muted);
-                y += 19f;
+                return;
             }
+
+            DrawSolidRect(area, new Color(0.075f, 0.085f, 0.095f, 0.96f));
+            DrawRectBorder(area, new Color(0.22f, 0.25f, 0.28f, 1f), 1f);
+
+            int round = snapshot == null ? 0 : snapshot.Round;
+            GUI.Label(
+                new Rect(area.x + 10f, area.y + 5f, area.width - 20f, 22f),
+                "Round " + Math.Max(1, round) + " - Turn Order",
+                CreateHudLabelStyle(14, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft));
+
+            IList<CombatTurnOrderEntryPayload> turnOrder = snapshot == null
+                ? Array.Empty<CombatTurnOrderEntryPayload>()
+                : snapshot.TurnOrder ?? Array.Empty<CombatTurnOrderEntryPayload>();
+            List<CombatTurnOrderEntryPayload> ordered = turnOrder
+                .Where(entry => entry != null)
+                .OrderBy(entry => entry.Index)
+                .ToList();
+            if (ordered.Count == 0)
+            {
+                GUI.Label(
+                    new Rect(area.x + 10f, area.y + 32f, area.width - 20f, area.height - 36f),
+                    "No turn order snapshot.",
+                    CreateHudLabelStyle(12, FontStyle.Normal, PanelMutedTextColor, TextAnchor.MiddleCenter));
+                return;
+            }
+
+            const float gap = 7f;
+            float tileHeight = Mathf.Clamp(area.height - 38f, 54f, 82f);
+            float tileWidth = Mathf.Clamp(tileHeight * 0.82f, 48f, 62f);
+            int maxTiles = Math.Max(1, Mathf.FloorToInt((area.width - 20f + gap) / (tileWidth + gap)));
+            int visibleCount = Math.Min(ordered.Count, maxTiles);
+            float startX = area.x + 10f;
+            float y = area.y + 32f;
+
+            for (int i = 0; i < visibleCount; i++)
+            {
+                if (i == visibleCount - 1 && ordered.Count > maxTiles)
+                {
+                    Rect overflow = new Rect(startX + i * (tileWidth + gap), y, tileWidth, tileHeight);
+                    DrawSolidRect(overflow, HudHostOnlyCardColor);
+                    DrawRectBorder(overflow, new Color(0.34f, 0.36f, 0.39f, 1f), 1f);
+                    GUI.Label(overflow, "+" + (ordered.Count - maxTiles + 1), CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter));
+                    RegisterTooltip(overflow, "More turns", string.Join("\n", ordered.Skip(i).Select(FormatCombatTurnOrderEntry).ToArray()));
+                    break;
+                }
+
+                CombatTurnOrderEntryPayload entry = ordered[i];
+                Rect tile = new Rect(startX + i * (tileWidth + gap), y, tileWidth, tileHeight);
+                DrawMirrorHudTurnOrderTile(tile, entry, snapshot == null ? null : snapshot.CurrentActorGuid);
+            }
+        }
+
+        private void DrawMirrorHudTurnOrderTile(Rect tile, CombatTurnOrderEntryPayload entry, string currentActorGuid)
+        {
+            bool current = entry != null &&
+                (entry.IsCurrentActor ||
+                    (!string.IsNullOrWhiteSpace(currentActorGuid) &&
+                    string.Equals(entry.ActorGuid, currentActorGuid, StringComparison.Ordinal)));
+            Color tileColor = current ? HudCurrentCardColor : HudTileColor;
+            Color borderColor = current
+                ? new Color(0.96f, 0.76f, 0.30f, 1f)
+                : entry != null && entry.TeamIndex > 0
+                    ? new Color(0.56f, 0.18f, 0.17f, 1f)
+                    : new Color(0.26f, 0.42f, 0.58f, 1f);
+
+            DrawSolidRect(tile, tileColor);
+            DrawRectBorder(tile, borderColor, current ? 2f : 1f);
+
+            Rect portrait = new Rect(tile.x + 5f, tile.y + 5f, tile.width - 10f, Math.Min(tile.width - 10f, tile.height - 26f));
+            DrawSolidRect(portrait, new Color(0.04f, 0.045f, 0.05f, 1f));
+            Sprite sprite = entry == null ? null : GetActorPortraitSprite(entry.ActorDataId);
+            if (sprite != null)
+            {
+                DrawPortraitSprite(portrait, sprite);
+            }
+            else
+            {
+                GUI.Label(portrait, "?", CreateHudLabelStyle(16, FontStyle.Bold, PanelMutedTextColor, TextAnchor.MiddleCenter));
+            }
+
+            string displayName = entry == null
+                ? "[turn]"
+                : CleanInline(entry.DisplayName ?? entry.ActorDataId ?? entry.ActorGuid ?? "[actor]");
+            GUI.Label(
+                new Rect(tile.x + 3f, tile.yMax - 18f, tile.width - 6f, 16f),
+                TrimPanelText(displayName, 7),
+                CreateHudLabelStyle(9, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter));
+
+            if (current)
+            {
+                Rect badge = new Rect(tile.x + 4f, tile.y + 4f, Math.Min(30f, tile.width - 8f), 14f);
+                DrawSolidRect(badge, new Color(0.78f, 0.48f, 0.10f, 0.96f));
+                GUI.Label(badge, "NOW", CreateHudLabelStyle(8, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter));
+            }
+
+            RegisterTooltip(tile, displayName, FormatCombatTurnOrderEntry(entry));
         }
 
         private void DrawDamageMeterCombatLog(Rect area, DamageMeterSnapshotPayload snapshot)
@@ -7556,6 +7733,11 @@ namespace DD2SteamMultiplayerHost
             if (actor == null)
             {
                 return "[actor]";
+            }
+
+            if (!string.IsNullOrWhiteSpace(actor.DisplayName))
+            {
+                return actor.DisplayName;
             }
 
             return string.IsNullOrWhiteSpace(actor.ActorDataId)
@@ -17553,9 +17735,11 @@ namespace DD2SteamMultiplayerHost
                 return "[turn]";
             }
 
-            string actor = string.IsNullOrWhiteSpace(entry.ActorDataId)
-                ? (entry.ActorGuid ?? "[actor]")
-                : entry.ActorDataId;
+            string actor = !string.IsNullOrWhiteSpace(entry.DisplayName)
+                ? CleanInline(entry.DisplayName)
+                : string.IsNullOrWhiteSpace(entry.ActorDataId)
+                    ? (entry.ActorGuid ?? "[actor]")
+                    : entry.ActorDataId;
             string flags =
                 (entry.IsCurrentActor ? "*" : string.Empty) +
                 (entry.IsFirstNormalTurn ? " first" : string.Empty) +
