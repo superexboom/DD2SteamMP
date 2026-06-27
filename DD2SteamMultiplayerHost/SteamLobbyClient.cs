@@ -7,7 +7,7 @@ namespace DD2SteamMultiplayerHost
 {
     internal sealed class SteamLobbyClient : IDisposable
     {
-        public const string LocalLobbyVersion = "dd2-steam-mp-host-116";
+        public const string LocalLobbyVersion = "dd2-steam-mp-host-118";
         private const string LobbyDataVersionKey = "dd2_mp_version";
         private const string LobbyDataHostKey = "host_steam_id";
         private const int MaxRichPresenceSlots = 4;

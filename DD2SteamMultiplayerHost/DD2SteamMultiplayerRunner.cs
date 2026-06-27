@@ -76,6 +76,7 @@ namespace DD2SteamMultiplayerHost
         private const float DamageMeterInactiveSnapshotForcedSendInterval = 30f;
         private const string DefaultArenaBattleConfigId = "mountain_boss_arms";
         private const string DefaultArenaCombatArenaId = "combat_arena_valley_gaunt";
+        private const string ArenaHeroPlaceholderActorId = "shared_death_headstone";
         private const double SnapshotPerfSlowThresholdMs = 4.0;
         private const float SnapshotPerfSummaryInterval = 60f;
         private const float MirrorHudMapRowGap = 124f;
@@ -629,6 +630,21 @@ namespace DD2SteamMultiplayerHost
             }
 
             return slots;
+        }
+
+        private static bool IsArenaHeroPlaceholderActorId(string actorId)
+        {
+            return string.Equals((actorId ?? string.Empty).Trim(), ArenaHeroPlaceholderActorId, StringComparison.Ordinal);
+        }
+
+        private static bool IsArenaHeroPlaceholderSlot(ArenaHeroDraftSlot slot)
+        {
+            return slot != null && IsArenaHeroPlaceholderActorId(slot.ActorId);
+        }
+
+        private string GetArenaHeroPlaceholderDisplayName()
+        {
+            return Ui("Headstone Placeholder", "墓碑占位");
         }
 
         private ArenaHeroDraftSlot[] GetArenaHeroDraftSlots(int teamIndex)
@@ -8990,6 +9006,7 @@ namespace DD2SteamMultiplayerHost
 
             ArenaHeroDraftSlot slot = slots[index];
             bool selected = index == _arenaHeroDraftSelectedSlot;
+            bool placeholder = IsArenaHeroPlaceholderSlot(slot);
             Rect row = GUILayoutUtility.GetRect(0f, 86f, GUILayout.ExpandWidth(true), GUILayout.Height(86f));
             DrawSolidRect(row, selected ? HudCurrentCardColor : HudCardColor);
 
@@ -9000,7 +9017,7 @@ namespace DD2SteamMultiplayerHost
 
             string actorName = string.IsNullOrWhiteSpace(slot.ActorId)
                 ? "[empty]"
-                : GetArenaActorClassDisplayName(slot.ActorId);
+                : placeholder ? GetArenaHeroPlaceholderDisplayName() : GetArenaActorClassDisplayName(slot.ActorId);
             string pathName = string.IsNullOrWhiteSpace(slot.PathId)
                 ? "[path]"
                 : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId);
@@ -9010,13 +9027,15 @@ namespace DD2SteamMultiplayerHost
                 "S" + (index + 1) + " " + actorName,
                 title);
             GUI.Label(new Rect(row.x + 12f, row.y + 29f, row.width - 20f, 18f),
-                "Path: " + pathName,
+                placeholder ? Ui("Mode: placeholder", "模式：占位") : "Path: " + pathName,
                 meta);
             GUI.Label(new Rect(row.x + 12f, row.y + 49f, row.width - 20f, 18f),
-                "Skills: " + slot.SkillIds.Count + "/5",
+                placeholder ? Ui("No loadout applied", "不应用右侧配置") : "Skills: " + slot.SkillIds.Count + "/5",
                 meta);
-            string itemSummary = "Combat: " + (string.IsNullOrWhiteSpace(slot.CombatItemId) ? "[none]" : GetLocalizedItemDisplayName(slot.CombatItemId, slot.CombatItemId)) +
-                " | Trinkets: " + slot.TrinketIds.Count + "/2";
+            string itemSummary = placeholder
+                ? ArenaHeroPlaceholderActorId
+                : "Combat: " + (string.IsNullOrWhiteSpace(slot.CombatItemId) ? "[none]" : GetLocalizedItemDisplayName(slot.CombatItemId, slot.CombatItemId)) +
+                    " | Trinkets: " + slot.TrinketIds.Count + "/2";
             GUI.Label(new Rect(row.x + 12f, row.y + 66f, row.width - 20f, 16f),
                 TrimPanelText(itemSummary, 44),
                 meta);
@@ -9103,10 +9122,14 @@ namespace DD2SteamMultiplayerHost
 
             GUIStyle title = CreateHudLabelStyle(12, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
             GUIStyle meta = CreateHudLabelStyle(10, FontStyle.Normal, PanelMutedTextColor, TextAnchor.UpperLeft);
+            bool placeholder = IsArenaHeroPlaceholderActorId(entry.ActorId);
+            string displayName = placeholder ? GetArenaHeroPlaceholderDisplayName() : entry.DisplayName ?? entry.ActorId;
             GUI.Label(new Rect(row.x + 10f, row.y + 7f, row.width - 20f, 20f),
-                (selectedActor ? "* " : string.Empty) + (entry.DisplayName ?? entry.ActorId),
+                (selectedActor ? "* " : string.Empty) + displayName,
                 title);
-            GUI.Label(new Rect(row.x + 10f, row.y + 29f, row.width - 20f, 18f), TrimPanelText(entry.ActorId ?? string.Empty, 42), meta);
+            GUI.Label(new Rect(row.x + 10f, row.y + 29f, row.width - 20f, 18f),
+                TrimPanelText(placeholder ? Ui("Placeholder | ", "占位 | ") + entry.ActorId : entry.ActorId ?? string.Empty, 42),
+                meta);
         }
 
         private void DrawArenaHeroDraftDetailColumn()
@@ -9117,6 +9140,13 @@ namespace DD2SteamMultiplayerHost
 
             DrawArenaHeroDraftActorHeader(slot);
             GUILayout.Space(8f);
+            if (IsArenaHeroPlaceholderSlot(slot))
+            {
+                DrawArenaHeroPlaceholderNotice();
+                GUILayout.EndVertical();
+                return;
+            }
+
             DrawArenaHeroDraftPathPicker(slot);
             GUILayout.Space(8f);
             DrawArenaHeroDetailTabBar();
@@ -9206,11 +9236,15 @@ namespace DD2SteamMultiplayerHost
                 slot = GetSelectedArenaHeroDraftSlot();
             }
 
+            bool placeholder = IsArenaHeroPlaceholderSlot(slot);
+            bool oldEnabled = GUI.enabled;
+            GUI.enabled = oldEnabled && !placeholder;
             if (GUILayout.Button(Ui("Default Skills", "默认技能"), GUILayout.Width(106f), GUILayout.Height(24f)))
             {
                 ResetArenaHeroDraftSkills(_arenaHeroDraftSelectedSlot);
             }
 
+            GUI.enabled = oldEnabled;
             GUILayout.EndHorizontal();
 
             if (string.IsNullOrWhiteSpace(slot.ActorId))
@@ -9228,14 +9262,31 @@ namespace DD2SteamMultiplayerHost
             GUIStyle title = CreateHudLabelStyle(14, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
             GUIStyle meta = CreateHudLabelStyle(11, FontStyle.Normal, PanelMutedTextColor, TextAnchor.UpperLeft);
             GUI.Label(new Rect(tile.x + 90f, tile.y + 10f, tile.width - 100f, 24f),
-                GetArenaActorClassDisplayName(slot.ActorId),
+                placeholder ? GetArenaHeroPlaceholderDisplayName() : GetArenaActorClassDisplayName(slot.ActorId),
                 title);
             GUI.Label(new Rect(tile.x + 90f, tile.y + 36f, tile.width - 100f, 20f),
-                "Path: " + (string.IsNullOrWhiteSpace(slot.PathId) ? "[path]" : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId)),
+                placeholder
+                    ? Ui("Path: disabled for placeholder", "道途：占位禁用")
+                    : "Path: " + (string.IsNullOrWhiteSpace(slot.PathId) ? "[path]" : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId)),
                 meta);
             GUI.Label(new Rect(tile.x + 90f, tile.y + 58f, tile.width - 100f, 20f),
-                "Skills: " + slot.SkillIds.Count + "/5 | id=" + slot.ActorId,
+                placeholder
+                    ? Ui("No loadout applied | id=", "不应用配置 | id=") + slot.ActorId
+                    : "Skills: " + slot.SkillIds.Count + "/5 | id=" + slot.ActorId,
                 meta);
+        }
+
+        private void DrawArenaHeroPlaceholderNotice()
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label(GetArenaHeroPlaceholderDisplayName());
+            DrawWrappedLabel(Ui(
+                "This slot uses shared_death_headstone as a body-blocking placeholder for Arena layouts. It is written to the native battle preferences, but the multiplayer draft treats it as non-playable: no path, skills, combat item, trinkets, quirks, start buffs, or ordainment controls are applied.",
+                "此槽位使用 shared_death_headstone 作为竞技场站位占位。它会写入官方战斗偏好，但联机草稿会把它当作不可操作单位处理：不会应用道途、技能、战斗道具、饰品、怪癖、开局 Buff 或敌方赐福。"));
+            DrawWrappedLabel(Ui(
+                "Use it when a one-on-one setup still needs empty positions. Select a normal hero slot again to edit the usual draft options.",
+                "适用于单角色单挑但仍需要空位的配置。切回正常英雄槽位后，可以继续编辑常规草稿选项。"));
+            GUILayout.EndVertical();
         }
 
         private void DrawArenaHeroDraftPathPicker(ArenaHeroDraftSlot slot)
@@ -10101,7 +10152,7 @@ namespace DD2SteamMultiplayerHost
 
         private static IEnumerable<string> GetArenaDraftQuirkIds(ArenaHeroDraftSlot slot)
         {
-            if (slot == null)
+            if (slot == null || IsArenaHeroPlaceholderSlot(slot))
             {
                 yield break;
             }
@@ -12013,6 +12064,11 @@ namespace DD2SteamMultiplayerHost
             for (int i = 0; i < slots.Length; i++)
             {
                 ArenaHeroDraftSlot slot = slots[i];
+                if (IsArenaHeroPlaceholderSlot(slot))
+                {
+                    continue;
+                }
+
                 HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
                 foreach (string quirkId in GetArenaDraftQuirkIds(slot))
                 {
@@ -12056,7 +12112,10 @@ namespace DD2SteamMultiplayerHost
 
         private static bool HasArenaHeroDraftAnyActor(ArenaHeroDraftSlot[] slots)
         {
-            return slots != null && slots.Any(slot => slot != null && !string.IsNullOrWhiteSpace(slot.ActorId));
+            return slots != null && slots.Any(slot =>
+                slot != null &&
+                !string.IsNullOrWhiteSpace(slot.ActorId) &&
+                !IsArenaHeroPlaceholderSlot(slot));
         }
 
         private ArenaHeroDraftSlot GetSelectedArenaHeroDraftSlot()
@@ -12204,6 +12263,16 @@ namespace DD2SteamMultiplayerHost
             }
 
             slot.ActorId = string.Empty;
+            ClearArenaHeroDraftRightSide(slot);
+        }
+
+        private static void ClearArenaHeroDraftRightSide(ArenaHeroDraftSlot slot)
+        {
+            if (slot == null)
+            {
+                return;
+            }
+
             slot.PathId = string.Empty;
             slot.CombatItemId = string.Empty;
             slot.DiseaseQuirkId = string.Empty;
@@ -12211,6 +12280,17 @@ namespace DD2SteamMultiplayerHost
             slot.TrinketIds.Clear();
             slot.PositiveQuirkIds.Clear();
             slot.NegativeQuirkIds.Clear();
+        }
+
+        private static void SetArenaHeroPlaceholderDraftSlot(ArenaHeroDraftSlot slot)
+        {
+            if (slot == null)
+            {
+                return;
+            }
+
+            slot.ActorId = ArenaHeroPlaceholderActorId;
+            ClearArenaHeroDraftRightSide(slot);
         }
 
         private void SetArenaHeroDraftActor(int slotIndex, string actorId)
@@ -12229,10 +12309,14 @@ namespace DD2SteamMultiplayerHost
 
             if (string.IsNullOrWhiteSpace(nextActorId))
             {
-                slot.PathId = string.Empty;
-                slot.CombatItemId = string.Empty;
-                slot.SkillIds.Clear();
-                slot.TrinketIds.Clear();
+                ClearArenaHeroDraftRightSide(slot);
+                return;
+            }
+
+            if (IsArenaHeroPlaceholderActorId(nextActorId))
+            {
+                SetArenaHeroPlaceholderDraftSlot(slot);
+                _arenaHeroDetailScroll = Vector2.zero;
                 return;
             }
 
@@ -12367,6 +12451,12 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
+            if (IsArenaHeroPlaceholderSlot(slot))
+            {
+                ClearArenaHeroDraftRightSide(slot);
+                return;
+            }
+
             List<string> available = GetArenaDraftAvailableSkillIds(slot.ActorId, slot.PathId);
             HashSet<string> availableSet = new HashSet<string>(available, StringComparer.Ordinal);
             List<string> normalized = new List<string>();
@@ -12461,6 +12551,8 @@ namespace DD2SteamMultiplayerHost
                     });
                 }
 
+                AddArenaHeroPlaceholderCatalogEntry();
+                _arenaHeroCatalogTotalCount = _arenaHeroCatalog.Count;
                 _arenaHeroCatalog.Sort((left, right) => string.Compare(left.DisplayName, right.DisplayName, StringComparison.CurrentCultureIgnoreCase));
                 _arenaHeroCatalogBuilt = true;
                 RefreshArenaHeroCatalogMatchesIfNeeded(true);
@@ -12473,6 +12565,25 @@ namespace DD2SteamMultiplayerHost
                 HostLog.Write("[arena] Failed to build hero catalog: " + ex.Message);
                 return false;
             }
+        }
+
+        private void AddArenaHeroPlaceholderCatalogEntry()
+        {
+            if (_arenaHeroCatalog.Any(entry => entry != null && IsArenaHeroPlaceholderActorId(entry.ActorId)))
+            {
+                return;
+            }
+
+            string displayName = GetArenaHeroPlaceholderDisplayName();
+            _arenaHeroCatalog.Add(new ArenaHeroCatalogEntry
+            {
+                ActorId = ArenaHeroPlaceholderActorId,
+                DisplayName = displayName,
+                SearchText = (ArenaHeroPlaceholderActorId +
+                    " " + displayName +
+                    " headstone placeholder death grave tombstone body block duel position " +
+                    "墓碑 占位 单挑 站位 挡位").ToLowerInvariant(),
+            });
         }
 
         private static bool IsArenaHeroClassCandidate(ActorDataClass actorClass)
@@ -13093,6 +13204,13 @@ namespace DD2SteamMultiplayerHost
                     return false;
                 }
 
+                if (IsArenaHeroPlaceholderActorId(actorId))
+                {
+                    heroIds.Add(ArenaHeroPlaceholderActorId);
+                    pathIds.Add(string.Empty);
+                    continue;
+                }
+
                 string pathId = string.IsNullOrWhiteSpace(slot.PathId) ? GetArenaDefaultPathId(actorId) : slot.PathId.Trim();
                 ActorDataPath path = TryGetArenaActorDataPath(pathId);
                 if (path == null)
@@ -13162,7 +13280,7 @@ namespace DD2SteamMultiplayerHost
             for (int i = 0; i < slots.Length; i++)
             {
                 ArenaHeroDraftSlot slot = slots[i];
-                if (slot == null || string.IsNullOrWhiteSpace(slot.ActorId))
+                if (slot == null || string.IsNullOrWhiteSpace(slot.ActorId) || IsArenaHeroPlaceholderSlot(slot))
                 {
                     continue;
                 }
@@ -14269,21 +14387,25 @@ namespace DD2SteamMultiplayerHost
                 }
 
                 DrawWrappedLabel(
-                    "  S" + (i + 1) + ": " + GetArenaActorClassDisplayName(slot.ActorId) +
-                    " | path=" + (string.IsNullOrWhiteSpace(slot.PathId) ? "[path]" : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId)) +
-                    " | skills=" + slot.SkillIds.Count + "/5");
+                    IsArenaHeroPlaceholderSlot(slot)
+                        ? "  S" + (i + 1) + ": " + GetArenaHeroPlaceholderDisplayName() + " | placeholder"
+                        : "  S" + (i + 1) + ": " + GetArenaActorClassDisplayName(slot.ActorId) +
+                            " | path=" + (string.IsNullOrWhiteSpace(slot.PathId) ? "[path]" : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId)) +
+                            " | skills=" + slot.SkillIds.Count + "/5");
             }
         }
 
         private static string BuildArenaDraftReadySummary(ArenaHeroDraftSlot[] slots)
         {
-            int heroes = CountConfiguredArenaDraftActors(slots);
+            int heroes = CountPlayableArenaDraftActors(slots);
+            int placeholders = CountArenaHeroPlaceholderDraftActors(slots);
             int skills = slots == null
                 ? 0
                 : slots
-                    .Where(slot => slot != null && !string.IsNullOrWhiteSpace(slot.ActorId))
+                    .Where(slot => slot != null && !string.IsNullOrWhiteSpace(slot.ActorId) && !IsArenaHeroPlaceholderSlot(slot))
                     .Sum(slot => slot.SkillIds.Count);
-            return heroes + " hero(s) / " + skills + " skill(s)";
+            return heroes + " hero(s) / " + skills + " skill(s)" +
+                (placeholders > 0 ? " / " + placeholders + " placeholder(s)" : string.Empty);
         }
 
         private void DrawArenaHeroPreviewTile(ActorInstance actor, int slot)
@@ -14514,6 +14636,23 @@ namespace DD2SteamMultiplayerHost
         private static int CountConfiguredArenaDraftActors(ArenaHeroDraftSlot[] slots)
         {
             return slots == null ? 0 : slots.Count(slot => slot != null && !string.IsNullOrWhiteSpace(slot.ActorId));
+        }
+
+        private static int CountPlayableArenaDraftActors(ArenaHeroDraftSlot[] slots)
+        {
+            return slots == null
+                ? 0
+                : slots.Count(slot =>
+                    slot != null &&
+                    !string.IsNullOrWhiteSpace(slot.ActorId) &&
+                    !IsArenaHeroPlaceholderSlot(slot));
+        }
+
+        private static int CountArenaHeroPlaceholderDraftActors(ArenaHeroDraftSlot[] slots)
+        {
+            return slots == null
+                ? 0
+                : slots.Count(slot => IsArenaHeroPlaceholderSlot(slot));
         }
 
         private void BeginArenaLaunch()
@@ -14806,10 +14945,13 @@ namespace DD2SteamMultiplayerHost
 
                 List<ActorInstance> party = GetArenaCurrentPartyActors();
                 partyCount = party.Count;
-                if (party.Count != heroIds.Count)
+                List<string> playableHeroIds = heroIds
+                    .Where(id => !IsArenaHeroPlaceholderActorId(id))
+                    .ToList();
+                if (party.Count != playableHeroIds.Count)
                 {
                     error = "rebuilt party count does not match draft; expected=" +
-                        heroIds.Count +
+                        playableHeroIds.Count +
                         ", actual=" + party.Count +
                         ", actors=" + string.Join(",", party.Select(actor => actor == null ? "[null]" : actor.ActorDataId ?? "[actor]").ToArray());
                     return false;
@@ -14818,7 +14960,7 @@ namespace DD2SteamMultiplayerHost
                 if (!DoesArenaPartyMatchDraft(party))
                 {
                     error = "rebuilt party does not match draft; expected=" +
-                        string.Join(",", heroIds.ToArray()) +
+                        string.Join(",", playableHeroIds.ToArray()) +
                         ", actual=" + string.Join(",", party.Select(actor => actor == null ? "[null]" : actor.ActorDataId ?? "[actor]").ToArray());
                     return false;
                 }
@@ -14961,11 +15103,24 @@ namespace DD2SteamMultiplayerHost
                 return false;
             }
 
-            int configuredCount = CountConfiguredArenaDraftActors(slots);
-            for (int i = 0; i < configuredCount && i < actors.Count; i++)
+            int actorIndex = 0;
+            for (int i = 0; i < slots.Length && actorIndex < actors.Count; i++)
             {
                 ArenaHeroDraftSlot slot = slots[i];
-                ActorInstance actor = actors[i];
+                if (slot == null || string.IsNullOrWhiteSpace(slot.ActorId))
+                {
+                    continue;
+                }
+
+                if (IsArenaHeroPlaceholderSlot(slot))
+                {
+                    HostLog.Write("[arena] Draft slot " + (i + 1) + " is " + ArenaHeroPlaceholderActorId +
+                        "; loadout application skipped.");
+                    continue;
+                }
+
+                ActorInstance actor = actors[actorIndex];
+                actorIndex++;
                 bool pathChanged;
                 bool actorChanged;
                 bool equipmentChanged;
@@ -15009,6 +15164,11 @@ namespace DD2SteamMultiplayerHost
         {
             changed = false;
             error = string.Empty;
+            if (IsArenaHeroPlaceholderSlot(slot))
+            {
+                return true;
+            }
+
             if (actor == null)
             {
                 error = "actor is missing";
@@ -15053,6 +15213,11 @@ namespace DD2SteamMultiplayerHost
         {
             changed = false;
             error = string.Empty;
+            if (IsArenaHeroPlaceholderSlot(slot))
+            {
+                return true;
+            }
+
             if (slot == null)
             {
                 error = "draft slot is missing";
@@ -15068,6 +15233,11 @@ namespace DD2SteamMultiplayerHost
         {
             changed = false;
             error = string.Empty;
+            if (IsArenaHeroPlaceholderSlot(slot))
+            {
+                return true;
+            }
+
             if (actor == null)
             {
                 error = "actor is missing";
@@ -15205,11 +15375,17 @@ namespace DD2SteamMultiplayerHost
                 return applied;
             }
 
-            int configuredCount = CountConfiguredArenaDraftActors(slots);
-            for (int i = 0; i < configuredCount && i < actors.Count; i++)
+            int actorIndex = 0;
+            for (int i = 0; i < slots.Length && actorIndex < actors.Count; i++)
             {
                 ArenaHeroDraftSlot slot = slots[i];
-                ActorInstance actor = actors[i];
+                if (slot == null || string.IsNullOrWhiteSpace(slot.ActorId) || IsArenaHeroPlaceholderSlot(slot))
+                {
+                    continue;
+                }
+
+                ActorInstance actor = actors[actorIndex];
+                actorIndex++;
                 foreach (string quirkId in GetArenaDraftQuirkIds(slot).Distinct(StringComparer.Ordinal))
                 {
                     if (ApplyArenaDraftQuirk(actor, quirkId))
@@ -15234,24 +15410,37 @@ namespace DD2SteamMultiplayerHost
                 return false;
             }
 
-            int configuredCount = CountConfiguredArenaDraftActors(slots);
-            if (configuredCount < 1 || actors.Count < configuredCount)
+            int playableCount = CountPlayableArenaDraftActors(slots);
+            if (playableCount < 1 || actors.Count < playableCount)
             {
                 return false;
             }
 
-            for (int i = 0; i < configuredCount; i++)
+            int actorIndex = 0;
+            for (int i = 0; i < slots.Length; i++)
             {
+                if (slots[i] == null || string.IsNullOrWhiteSpace(slots[i].ActorId) || IsArenaHeroPlaceholderSlot(slots[i]))
+                {
+                    continue;
+                }
+
+                if (actorIndex >= actors.Count)
+                {
+                    return false;
+                }
+
                 string expected = (slots[i].ActorId ?? string.Empty).Trim();
-                string actual = actors[i] == null ? string.Empty : (actors[i].ActorDataId ?? string.Empty).Trim();
+                string actual = actors[actorIndex] == null ? string.Empty : (actors[actorIndex].ActorDataId ?? string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(expected) ||
                     !string.Equals(expected, actual, StringComparison.Ordinal))
                 {
                     return false;
                 }
+
+                actorIndex++;
             }
 
-            return true;
+            return actorIndex == playableCount;
         }
 
         private static bool ApplyArenaDraftQuirk(ActorInstance actor, string quirkId)
@@ -16401,6 +16590,11 @@ namespace DD2SteamMultiplayerHost
 
         private static string GetArenaActorClassDisplayName(string actorDataId)
         {
+            if (IsArenaHeroPlaceholderActorId(actorDataId))
+            {
+                return "Headstone Placeholder";
+            }
+
             ActorDataClass actorClass = TryGetArenaActorDataClass(actorDataId);
             try
             {
