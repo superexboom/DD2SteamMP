@@ -16,6 +16,8 @@ This project is not affiliated with Red Hook Studios. It is a research/debugging
 - Voting/sync flows for route choices, story choices, loot, inn choices, lair continuation, dialogs, altar/confession flows, and selected run interactions.
 - Client mirror HUDs for combat, map, inventory/run status, store/loadout flows, and custom debug-demo setup.
 - Custom debug-demo/PvP battle setup, including hero presets, monster presets, waves, torch/confession options, and selected arena modifiers.
+- Arena snapshots the active Run RandomContainer before launch, uses fresh temporary states for COMBAT/BOSS/ACTOR_CONTROLLER/SKILL_CALCULATION/EFFECT/RESIST/DEATHS_DOOR/SUMMON streams, and restores the exact Run state on success, failure, timeout, or host destruction. Arena battle-advantage UI rolls use a private PRNG instead of UnityEngine.Random.
+- Enemy ordainment is resolved only for ActorClasses in the Arena enemy configuration; the native `run_test_boss_modifier` preference is cleared on combat entry and every launch/host cleanup path.
 
 BattleUndo compatibility bridge: the host exposes `DD2SteamMultiplayerRunner.NotifyUndoRestoreBegin(restoreId)` and `NotifyUndoRestoreComplete(restoreId, success)`. An undo integration may discover these static entry points by reflection. Begin increments the restore generation, clears the pending turn and auto-turn memory, and forces the next combat and DamageMeter snapshots; completion or rejection clears transient state again and schedules fresh snapshots. Call these methods on Unity's main thread; clients must not restore locally.
 

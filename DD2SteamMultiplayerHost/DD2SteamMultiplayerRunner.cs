@@ -202,6 +202,7 @@ private static readonly Color PanelChipBlockedColor = new Color(0.28f, 0.12f, 0.
         private readonly Dictionary<uint, int> _coopHeroControlSlots = new Dictionary<uint, int>();
         private readonly int[] _arenaDraftControlSlots = new int[4];
         private bool _arenaPendingLaunch;
+        private bool _arenaLaunchDrivingTransitionRequested;
         private bool _arenaDebugControlsSuppressed;
         private bool _arenaDebugControlsEnteredCombat;
         private int _lastAutoTurnRound = -1;
@@ -291,6 +292,8 @@ private bool _arenaTorchPanelVisible;
         private bool _arenaResultBypassCombatEntered;
         private bool _arenaWaitingForNextBattle;
         private bool _arenaBattleModifierOverrideArmed;
+        private bool _arenaBossModifierScopeActive;
+        private bool _arenaEnemyActorCreationScope;
         private string _arenaBattleModifierOverrideLogKey;
         private bool _arenaTorchOverrideArmed;
         private string _arenaTorchOverrideLogKey;
@@ -368,6 +371,7 @@ private bool _arenaTorchPanelVisible;
         private ArenaQuirkKind _arenaQuirkBrowseKind = ArenaQuirkKind.Positive;
         private bool _arenaHeroPathSectionExpanded;
         private ArenaBattleAdvantageMode _arenaBattleAdvantageMode = ArenaBattleAdvantageMode.None;
+        private ArenaRandomContext _arenaRandomContext;
         private bool _panelStylesReady;
         private readonly List<Texture2D> _panelOwnedTextures = new List<Texture2D>(48);
         private Texture2D _panelWindowTexture;
@@ -793,6 +797,9 @@ private GUIStyle _panelSubButtonStyle;
             Debug.Log("[DD2SteamMP] Host runner started.");
             HostLog.Write("Host runner started.");
             _activeArenaRunner = this;
+            _arenaRandomContext = new ArenaRandomContext(HostLog.Write);
+            ClearArenaBossModifierEditorPref();
+            HostLog.Write("[arena] Cleared any stale native run_test_boss_modifier before runtime startup.");
             EnsureArenaBattleModifierPatchInstalled();
             EnsureNativeHotkeyBlockPatchInstalled();
             TryLogSteamIdentity();
@@ -1006,6 +1013,9 @@ PollCommandFile();
 
         private void OnDestroy()
         {
+            _arenaRandomContext?.End("runner-destroy");
+            ClearArenaBossModifierEditorPref();
+            ClearArenaNativeLoadoutEditorPrefs();
             Debug.Log("[DD2SteamMP] Host runner destroyed.");
             HostLog.Write("Host runner destroyed.");
             if (ReferenceEquals(_activeArenaRunner, this))
@@ -1236,8 +1246,37 @@ _lobbyClient.DumpLobby();
                         null,
                         new[] { typeof(BattleConfigurationDefinition) },
                         null);
+                    MethodInfo bossModifierOriginal = typeof(BossCalculation).GetMethod(
+                        nameof(BossCalculation.GetTestBossModifier),
+                        BindingFlags.Public | BindingFlags.Static,
+                        null,
+                        new[] { typeof(ActorDataClass) },
+                        null);
                     MethodInfo battleModifierPrefix = typeof(DD2SteamMultiplayerRunner).GetMethod(
                         nameof(ArenaBattleModifierRollPrefix),
+                        BindingFlags.NonPublic | BindingFlags.Static);
+                    MethodInfo bossModifierPrefix = typeof(DD2SteamMultiplayerRunner).GetMethod(
+                        nameof(ArenaBossModifierPrefix),
+                        BindingFlags.NonPublic | BindingFlags.Static);
+                    MethodInfo actorTeamOriginal = typeof(CombatBhv).GetMethod(
+                        "CreateActorOnTeamParameters",
+                        BindingFlags.NonPublic | BindingFlags.Instance,
+                        null,
+                        new[]
+                        {
+                            typeof(IReadOnlyList<string>),
+                            typeof(bool),
+                            typeof(IReadOnlyList<string>),
+                            typeof(BattleTeams.Parameters.TeamParameters),
+                            typeof(bool),
+                            typeof(bool)
+                        },
+                        null);
+                    MethodInfo actorTeamPrefix = typeof(DD2SteamMultiplayerRunner).GetMethod(
+                        nameof(ArenaActorTeamCreationPrefix),
+                        BindingFlags.NonPublic | BindingFlags.Static);
+                    MethodInfo actorTeamPostfix = typeof(DD2SteamMultiplayerRunner).GetMethod(
+                        nameof(ArenaActorTeamCreationPostfix),
                         BindingFlags.NonPublic | BindingFlags.Static);
                     MethodInfo torchGroupOriginal = typeof(TorchManager).GetMethod(
                         nameof(TorchManager.GetActiveTorchLevelGroup),
@@ -1295,6 +1334,8 @@ _lobbyClient.DumpLobby();
                         BindingFlags.NonPublic | BindingFlags.Static);
 
                     if (battleModifierOriginal == null || battleModifierPrefix == null ||
+                        bossModifierOriginal == null || bossModifierPrefix == null ||
+                        actorTeamOriginal == null || actorTeamPrefix == null || actorTeamPostfix == null ||
                         torchGroupOriginal == null || torchGroupPrefix == null ||
                         runValueGetOriginal == null || runValueGetPrefix == null ||
                         runValueSetOriginal == null || runValueSetPrefix == null ||
@@ -1306,6 +1347,8 @@ _lobbyClient.DumpLobby();
                     }
 
                     PatchWithHarmonyPrefix(battleModifierOriginal, battleModifierPrefix);
+                    PatchWithHarmonyPrefix(bossModifierOriginal, bossModifierPrefix);
+                    PatchWithHarmonyPrefixAndPostfix(actorTeamOriginal, actorTeamPrefix, actorTeamPostfix);
                     PatchWithHarmonyPrefix(torchGroupOriginal, torchGroupPrefix);
                     PatchWithHarmonyPrefix(runValueGetOriginal, runValueGetPrefix);
                     PatchWithHarmonyPrefix(runValueSetOriginal, runValueSetPrefix);
@@ -1438,6 +1481,48 @@ _lobbyClient.DumpLobby();
             patchMethod.Invoke(_arenaBattleModifierHarmony, args);
         }
 
+        private static void PatchWithHarmonyPrefixAndPostfix(
+            MethodInfo original,
+            MethodInfo prefix,
+            MethodInfo postfix)
+        {
+            Assembly harmonyAssembly = LoadHarmonyAssemblyForArenaPatch();
+            Type harmonyType = harmonyAssembly.GetType("HarmonyLib.Harmony", throwOnError: true);
+            Type harmonyMethodType = harmonyAssembly.GetType("HarmonyLib.HarmonyMethod", throwOnError: true);
+            ConstructorInfo harmonyCtor = harmonyType.GetConstructor(new[] { typeof(string) });
+            ConstructorInfo harmonyMethodCtor = harmonyMethodType.GetConstructor(new[] { typeof(MethodInfo) });
+            if (harmonyCtor == null || harmonyMethodCtor == null)
+            {
+                throw new MissingMethodException("Could not find required Harmony constructors.");
+            }
+
+            _arenaBattleModifierHarmony = harmonyCtor.Invoke(new object[] { "com.superexboom.dd2steammultiplayer.host.arena-boss-scope" });
+            object prefixHarmonyMethod = harmonyMethodCtor.Invoke(new object[] { prefix });
+            object postfixHarmonyMethod = harmonyMethodCtor.Invoke(new object[] { postfix });
+            MethodInfo patchMethod = FindHarmonyPatchMethod(harmonyType, harmonyMethodType, "prefix");
+            ParameterInfo[] parameters = patchMethod.GetParameters();
+            object[] args = new object[parameters.Length];
+            args[0] = original;
+
+            for (int i = 1; i < parameters.Length; i++)
+            {
+                if (string.Equals(parameters[i].Name, "prefix", StringComparison.OrdinalIgnoreCase))
+                {
+                    args[i] = prefixHarmonyMethod;
+                }
+                else if (string.Equals(parameters[i].Name, "postfix", StringComparison.OrdinalIgnoreCase))
+                {
+                    args[i] = postfixHarmonyMethod;
+                }
+                else
+                {
+                    args[i] = null;
+                }
+            }
+
+            patchMethod.Invoke(_arenaBattleModifierHarmony, args);
+        }
+
         private static Assembly LoadHarmonyAssemblyForArenaPatch()
         {
             Assembly loaded = AppDomain.CurrentDomain.GetAssemblies()
@@ -1496,6 +1581,130 @@ _lobbyClient.DumpLobby();
             __result = runner.ResolveArenaBattleModifierOverride(battleConfiguration);
             runner.LogArenaBattleModifierOverride(battleConfiguration, __result);
             return false;
+        }
+
+        private static bool ArenaBossModifierPrefix(
+            ActorDataClass actorDataClass,
+            ref BossModifierDefinition __result)
+        {
+            DD2SteamMultiplayerRunner runner = _activeArenaRunner;
+            if (runner == null || !runner.ShouldOverrideArenaBossModifier())
+            {
+                return true;
+            }
+
+            if (!runner.IsArenaEnemyActorClass(actorDataClass))
+            {
+                // The native RUN_TEST_BOSS_MODIFIER preference is global. During
+                // Arena it must never attach the enemy ordainment to Team 0 heroes
+                // or unrelated actors created by the surrounding Run.
+                __result = null;
+                return false;
+            }
+
+            string modifierId = (runner._arenaBossModifierId ?? string.Empty).Trim();
+            BossModifierDefinition definition = string.IsNullOrWhiteSpace(modifierId)
+                ? null
+                : TryGetArenaBossModifierDefinition(modifierId);
+            __result = definition != null && definition.GetIsValidForActorClass(actorDataClass)
+                ? definition
+                : null;
+            runner.LogArenaBossModifierApplication(actorDataClass, __result);
+            return false;
+        }
+
+        private static void ArenaActorTeamCreationPrefix(
+            bool useExistingActorIfExists,
+            bool allowOversizeTeam)
+        {
+            DD2SteamMultiplayerRunner runner = _activeArenaRunner;
+            if (runner == null || !runner._arenaBossModifierScopeActive)
+            {
+                return;
+            }
+
+            // StartCombat calls this helper once per team. Team 1 is the only
+            // non-existing, non-oversize group in the native debug path; Team 0
+            // either reuses the party or allows the configured hero size.
+            runner._arenaEnemyActorCreationScope = !useExistingActorIfExists && !allowOversizeTeam;
+            if (runner._arenaEnemyActorCreationScope)
+            {
+                runner.HostLogArenaScope("enemy actor creation scope entered");
+            }
+        }
+
+        private static void ArenaActorTeamCreationPostfix()
+        {
+            DD2SteamMultiplayerRunner runner = _activeArenaRunner;
+            if (runner != null && runner._arenaEnemyActorCreationScope)
+            {
+                runner._arenaEnemyActorCreationScope = false;
+                runner.HostLogArenaScope("enemy actor creation scope left");
+            }
+        }
+
+        private void HostLogArenaScope(string reason)
+        {
+            HostLog.Write("[arena] BossModifier " + reason + ".");
+        }
+
+        private bool ShouldOverrideArenaBossModifier()
+        {
+            return _arenaEnemyActorCreationScope &&
+                _arenaBossModifierScopeActive &&
+                _arenaBattleModifierOverrideArmed &&
+                !string.IsNullOrWhiteSpace(_arenaBossModifierId) &&
+                (_arenaPendingLaunch ||
+                 _arenaDebugControlsSuppressed ||
+                 _arenaResultBypassArmed ||
+                 _arenaWaitingForNextBattle ||
+                 _arenaPostBattleMainMenuReturnPending ||
+                 _arenaPostBattleMainMenuReturnRequested);
+        }
+
+        private bool IsArenaEnemyActorClass(ActorDataClass actorDataClass)
+        {
+            if (actorDataClass == null)
+            {
+                return false;
+            }
+
+            string actorId = actorDataClass.Id;
+            if (string.IsNullOrWhiteSpace(actorId))
+            {
+                return false;
+            }
+
+            if (HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots))
+            {
+                return _arenaEnemyHeroDraftSlots.Any(slot =>
+                    slot != null && string.Equals((slot.ActorId ?? string.Empty).Trim(), actorId, StringComparison.OrdinalIgnoreCase));
+            }
+
+            try
+            {
+                CombatScenarioData scenario = Singleton<GameTypeMgr>.Instance.CombatScenarioData;
+                BattleConfigurationDefinition config = scenario == null ? null : scenario.CurrentBattleConfiguration;
+                if (config != null && config.m_EnemyActors != null && config.m_EnemyActors.Contains(actorId))
+                {
+                    return true;
+                }
+
+                BattleConfigurationDefinition additional = scenario == null ? null : scenario.AdditionalBattleConfiguration;
+                return additional != null && additional.m_EnemyActors != null && additional.m_EnemyActors.Contains(actorId);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void LogArenaBossModifierApplication(ActorDataClass actorDataClass, BossModifierDefinition result)
+        {
+            HostLog.Write("[arena] Boss modifier resolve actorClass=" +
+                (actorDataClass == null ? "[null]" : actorDataClass.Id) +
+                ", selected=" + ((_arenaBossModifierId ?? string.Empty).Trim()) +
+                ", applied=" + (result == null ? "[none]" : result.m_Id) + ".");
         }
 
         private bool ShouldOverrideArenaBattleModifierRoll()
@@ -1619,6 +1828,8 @@ _lobbyClient.DumpLobby();
 
             _arenaBattleModifierOverrideArmed = false;
             _arenaBattleModifierOverrideLogKey = null;
+            _arenaLaunchDrivingTransitionRequested = false;
+            _arenaBossModifierScopeActive = false;
             bool wasArenaLaunch = !string.IsNullOrWhiteSpace(_arenaLastLaunchBattleConfigId) &&
                 (_arenaHeroVsHeroAtLaunch ||
                  _arenaPendingLaunch ||
@@ -1634,7 +1845,9 @@ _lobbyClient.DumpLobby();
                 _arenaLastLaunchBattleConfigId = string.Empty;
             }
             ClearArenaBattleModifierEditorPrefs();
+            ClearArenaBossModifierEditorPref();
             ReleaseArenaTorchOverride(reason);
+            _arenaRandomContext?.End(reason ?? "arena-release");
         }
 
         private void ArmArenaTorchOverrideForLaunch()
@@ -1815,6 +2028,21 @@ _lobbyClient.DumpLobby();
             {
                 TextBasedEditorPrefsBaseType.BATTLE_TEST_BATTLE_MODIFIER.ClearValue();
                 TextBasedEditorPrefsBaseType.BATTLE_TEST_ROLL_BATTLE_MODIFIER.ClearValue();
+            }
+            catch
+            {
+            }
+        }
+
+        private static void ClearArenaBossModifierEditorPref()
+        {
+            try
+            {
+                TextBasedEditorPrefsBaseType.RUN_TEST_BOSS_MODIFIER.ClearValue();
+                if (_activeArenaRunner != null)
+                {
+                    _activeArenaRunner._arenaBossModifierScopeActive = false;
+                }
             }
             catch
             {
@@ -11483,8 +11711,8 @@ flags.Add("heroEffects=" + config.HeroEffects.Count);
             EnsureArenaBossModifierCatalog();
             GUILayout.Label(Ui("Enemy Ordainment", "敌方赐福"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             DrawWrappedLabel(Ui(
-                "This writes run_test_boss_modifier. It only applies when the selected BossModifier is valid for the spawned enemy class.",
-                "这里会写入 run_test_boss_modifier。只有当所选 BossModifier 对生成的敌人类型有效时才会生效。"));
+                "This applies the selected BossModifier only while native Arena enemy actors are being constructed.",
+                "这里会在原生竞技场创建敌方 Actor 时临时应用所选 BossModifier，只作用于敌方队伍。"));
             DrawWrappedLabel(Ui("Selected: ", "当前：") +
                 (string.IsNullOrWhiteSpace(_arenaBossModifierId)
                     ? Ui("[none]", "[无]")
@@ -12273,7 +12501,12 @@ flags.Add("heroEffects=" + config.HeroEffects.Count);
                     return null;
                 }
 
-                float pick = UnityEngine.Random.Range(0f, totalWeight);
+                // Never consume UnityEngine.Random here: that state belongs to the
+                // active expedition.  ArenaRandomContext owns a private PRNG when
+                // the Arena scope is active.
+                float pick = (float)((_arenaRandomContext == null
+                    ? 0.5d
+                    : _arenaRandomContext.NextDouble()) * totalWeight);
                 for (int i = 0; i < candidates.Count; i++)
                 {
                     BattleModifierDefinition definition = candidates[i];
@@ -16599,6 +16832,13 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
 
         private void BeginArenaLaunch()
         {
+            if (_lobbyClient != null && _lobbyClient.IsInLobby && !_lobbyClient.IsHost)
+            {
+                _arenaStatus = "Launch blocked: only the host can start an Arena.";
+                HostLog.Write("[arena] Launch blocked for client; Arena RNG is host-authoritative.");
+                return;
+            }
+
             if (_arenaPendingLaunch)
             {
                 _arenaStatus = "Launch is already pending.";
@@ -16615,6 +16855,8 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
 
             _arenaHeroVsHeroAtLaunch = HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots);
             _coopHeroControlSlots.Clear();
+            _arenaLaunchDrivingTransitionRequested = false;
+            _arenaBossModifierScopeActive = !string.IsNullOrWhiteSpace(_arenaBossModifierId);
 
             _arenaPendingNativeLaunchPrefsLines = lines;
             _arenaBattleModifierOverrideArmed = true;
@@ -16651,6 +16893,7 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                         _arenaPendingLaunch = false;
                         _arenaStatus = "Launch timed out: " + reason;
                         HostLog.Write("[arena] Launch timed out: " + reason + " " + BuildArenaLaunchSnapshot());
+                        ReleaseArenaBattleModifierOverride("launch timeout");
                         return;
                     }
 
@@ -16668,6 +16911,19 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                     _arenaPendingLaunch = false;
                     _arenaStatus = "Launch failed: no native launch prefs were prepared.";
                     HostLog.Write("[arena] Launch failed: no native launch prefs were prepared.");
+                    ReleaseArenaBattleModifierOverride("no native launch prefs");
+                    return;
+                }
+
+                string randomError = string.Empty;
+                bool randomStarted = _arenaRandomContext != null &&
+                    _arenaRandomContext.TryBegin("arena-launch", out randomError);
+                if (!randomStarted)
+                {
+                    _arenaPendingLaunch = false;
+                    _arenaStatus = "Launch failed: Arena RNG context could not start: " + randomError;
+                    HostLog.Write("[arena] Launch failed: Arena RNG context could not start: " + randomError + ".");
+                    ReleaseArenaBattleModifierOverride("rng context start failed");
                     return;
                 }
 
@@ -16678,6 +16934,7 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                     _arenaPendingLaunch = false;
                     _arenaStatus = "Launch failed: failed to preload custom enemy heroes: " + enemyPreloadError;
                     HostLog.Write("[arena] Launch failed: failed to preload custom enemy heroes: " + enemyPreloadError + ".");
+                    ReleaseArenaBattleModifierOverride("enemy preload failed");
                     return;
                 }
 
@@ -16686,6 +16943,7 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                     _arenaPendingLaunch = false;
                     _arenaStatus = "Launch failed: failed to rebuild draft party: " + partyRebuildError;
                     HostLog.Write("[arena] Launch failed: failed to rebuild draft party before combat launch: " + partyRebuildError + ".");
+                    ReleaseArenaBattleModifierOverride("party rebuild failed");
                     return;
                 }
 
@@ -16697,6 +16955,7 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                     _arenaPendingLaunch = false;
                     _arenaStatus = "Launch failed: " + sequenceError;
                     HostLog.Write("[arena] Launch failed: invalid launch sequence: " + sequenceError + ".");
+                    ReleaseArenaBattleModifierOverride("invalid launch sequence");
                     return;
                 }
 
@@ -16713,6 +16972,7 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                     _arenaPendingLaunch = false;
                     _arenaStatus = "Launch failed: invalid combat scenario.";
                     HostLog.Write("[arena] Launch failed: invalid combat scenario.");
+                    ReleaseArenaBattleModifierOverride("invalid combat scenario");
                     return;
                 }
 
@@ -16730,6 +16990,7 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                         _arenaPendingLaunch = false;
                         _arenaStatus = "Launch failed: failed to apply draft skills: " + skillApplyError;
                         HostLog.Write("[arena] Launch failed: failed to apply draft skills before combat launch: " + skillApplyError + ".");
+                        ReleaseArenaBattleModifierOverride("draft skill apply failed");
                         return;
                     }
 
@@ -16817,6 +17078,11 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                 if (currentMode == GameModeType.COMBAT)
                 {
                     _arenaDebugControlsEnteredCombat = true;
+                    // The native test hook is needed only while StartCombat is
+                    // constructing the actors. Leaving it set would affect later
+                    // actor creation outside Arena (and can make the next launch
+                    // inherit the previous ordainment).
+                    ClearArenaBossModifierEditorPref();
                     HostLog.Write("[arena] Combat entered; suppressing official battle test controls.");
                 }
                 else
@@ -18064,11 +18330,6 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                 AddArenaNativeLaunchPref(prefs, "hero_test_start_effect_source_id", "dd2steammp_arena");
             }
 
-            if (!string.IsNullOrWhiteSpace(bossModifierId))
-            {
-                AddArenaNativeLaunchPref(prefs, "run_test_boss_modifier", bossModifierId);
-            }
-
             lines = prefs.ToArray();
             return true;
         }
@@ -18203,6 +18464,33 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
                 reason = "start or continue a run first";
                 return false;
             }
+
+            // The native debug-test boss/ordainment hook assumes the expedition
+            // runtime is already in DRIVING. Starting it directly from Altar or
+            // Embark leaves the game in a half-installed mode and can stall before
+            // the combat scene is entered. Normalize that boundary first.
+            if (mode == GameModeType.ALTAR_OF_HOPE || mode == GameModeType.EMBARK)
+            {
+                if (!_arenaLaunchDrivingTransitionRequested)
+                {
+                    _arenaLaunchDrivingTransitionRequested = true;
+                    HostLog.Write("[arena] Normalizing launch mode from " + mode.GetName() + " to DRIVING before applying native test prefs.");
+                    try
+                    {
+                        gameModeMgr.SetMode(GameModeType.DRIVING, false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _arenaLaunchDrivingTransitionRequested = false;
+                        reason = "failed to normalize launch mode: " + ex.Message;
+                        return false;
+                    }
+                }
+
+                reason = "waiting for DRIVING after launch-mode normalization";
+                return false;
+            }
+            _arenaLaunchDrivingTransitionRequested = false;
 
             if (mode == GameModeType.COMBAT)
             {

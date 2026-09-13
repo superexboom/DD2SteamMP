@@ -86,7 +86,11 @@ New-Item -ItemType Directory -Force -Path $payloadDir | Out-Null
 Copy-Item -Force -LiteralPath (Join-Path $packageTemplateDir "Install-DD2SteamMP.ps1") -Destination $stageRoot
 Copy-Item -Force -LiteralPath (Join-Path $packageTemplateDir "Uninstall-DD2SteamMP.ps1") -Destination $stageRoot
 Copy-Item -Force -LiteralPath (Join-Path $packageTemplateDir "Check-DD2SteamMP.ps1") -Destination $stageRoot
-Copy-Item -Force -LiteralPath (Join-Path $packageTemplateDir "README.md") -Destination $stageRoot
+$readmeSource = Join-Path $packageTemplateDir "README.md"
+if (!(Test-Path -LiteralPath $readmeSource)) {
+    $readmeSource = Join-Path $projectRoot "README.md"
+}
+Copy-Item -Force -LiteralPath $readmeSource -Destination (Join-Path $stageRoot "README.md")
 
 $runtimeFiles = @(
     @{ Source = Join-Path $doorstopOut "DD2SteamMultiplayerDoorstop.dll"; Name = "DD2SteamMultiplayerDoorstop.dll" },

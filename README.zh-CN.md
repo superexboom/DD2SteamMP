@@ -16,6 +16,8 @@ DD2 Steam MP 是一个用于《Darkest Dungeon II》的实验性 Steam 大厅和
 - 路线、故事、战利品、旅馆选择、巢穴继续、弹窗、祭坛/忏悔和部分 run 交互的投票/同步。
 - 客机镜像 HUD，包括战斗、地图、背包/run 状态、商店/loadout 和自定义 debug-demo 设置。
 - 自定义 debug-demo/PvP 战斗设置，包括英雄预设、怪物预设、连战、火炬/忏悔选项和部分竞技场修正。
+- Arena 启动前会先保存当前 Run 的 RandomContainer；竞技场期间为 COMBAT、BOSS、ACTOR_CONTROLLER、SKILL_CALCULATION、EFFECT、RESIST、DEATHS_DOOR、SUMMON 等战斗流设置新的临时状态，结束、失败、超时或 Host 销毁时恢复原状态。战斗优势 UI 的抽取使用 Arena 私有 PRNG，不消费 Run 的 UnityEngine.Random。
+- 敌方赐福只在 Arena 当前敌方配置 ActorClass 上解析，玩家队伍和无关 Actor 不会继承 `run_test_boss_modifier`；该原生测试偏好会在进入战斗后和所有退出路径清空。
 
 BattleUndo 兼容桥：Host 暴露 `DD2SteamMultiplayerRunner.NotifyUndoRestoreBegin(restoreId)` 和 `NotifyUndoRestoreComplete(restoreId, success)`。Undo 集成可通过反射调用这两个静态入口；开始时会递增 RestoreGeneration、清空待处理 TurnCommand、重置自动回合记忆并强制下一轮 Combat/DamageMeter snapshot，完成或拒绝时再次清理并强制刷新。所有入口必须在 Unity 主线程调用，客户端不应自行执行恢复。
 

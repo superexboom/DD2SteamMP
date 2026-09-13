@@ -2,6 +2,8 @@ $ErrorActionPreference = 'Stop'
 
 $runnerPath = Join-Path $PSScriptRoot 'DD2SteamMultiplayerHost\DD2SteamMultiplayerRunner.cs'
 $runner = Get-Content -LiteralPath $runnerPath -Raw -Encoding UTF8
+$rngPath = Join-Path $PSScriptRoot 'DD2SteamMultiplayerHost\ArenaRandomContext.cs'
+$rng = Get-Content -LiteralPath $rngPath -Raw -Encoding UTF8
 $required = @(
     'string.Equals(definition.m_Id, "ambush_monsters", StringComparison.Ordinal)',
     'private bool TryResolveHeroTurnOwner(',
@@ -15,10 +17,35 @@ $required = @(
     'UiInputBlocker.RegisterRect(_arenaHeroSetupRect, setupScale)',
     'DrawArenaHeroDetailTabFixedHeader(slot);',
     'DrawArenaHeroDetailTabCandidates(slot);',
-    'GUILayout.ExpandHeight(true));'
+    'GUILayout.ExpandHeight(true));',
+    'run_test_boss_modifier',
+    'ClearArenaBossModifierEditorPref()',
+    'Normalizing launch mode',
+    '_arenaRandomContext.TryBegin',
+    '_arenaRandomContext?.End',
+    'ArenaBossModifierPrefix',
+    'IsArenaEnemyActorClass',
+    'bossModifierOriginal'
 )
 foreach ($text in $required) {
-    if (-not $runner.Contains($text)) { throw "Missing MP contract: $text" }
+    if (-not ($runner + $rng).Contains($text)) { throw "Missing MP contract: $text" }
+}
+
+foreach ($text in @(
+    'RandomContainer.SaveToJson()',
+    'RandomContainer.LoadFromJson(_savedJson)',
+    'RandomContainer.SetSeed(identifier',
+    'RandomIdentifier.ACTOR_CONTROLLER',
+    'RandomIdentifier.BOSS',
+    'RandomNumberGenerator.Create()',
+    'ReturnToUnidentifiedState',
+    'm_initialRandomMap'
+)) {
+    if (-not $rng.Contains($text)) { throw "Missing Arena RNG contract: $text" }
+}
+
+if ($runner.Contains('float pick = UnityEngine.Random.Range(0f, totalWeight)')) {
+    throw 'Arena battle advantage still consumes UnityEngine.Random directly.'
 }
 
 if ($runner.Contains('GetArenaHeroCandidateScrollHeight') -or
