@@ -8,4 +8,5 @@ obj/
 *.dll
 *.zip
 artifacts/
+**/__pycache__/
 Directory.Build.props
