@@ -6,8 +6,9 @@
 - [x] Reject missing/unconfigured bindings and exclude expedition enemy-pilot PVP plus Arena hero-vs-hero.
 - [x] Make the hero setup window fit 1600x900 with responsive scaling and a single scrollable detail body.
 - [x] Push the current Arena/PVE work to `origin/main` before experimental runtime changes (`8ecf775`).
-- [ ] Scope enemy ordainment to the Arena enemy side and clear the native `run_test_boss_modifier` preference on every launch exit/failure.
-- [ ] Add an Arena-only RNG context: snapshot the current Run `RandomContainer`, seed combat/BOSS/AI/effect streams independently, and restore the exact Run state on every exit path.
-- [ ] Replace direct `UnityEngine.Random` Arena selection with a private Arena PRNG so UI-side rolls cannot consume the Run random state.
-- [ ] Add runtime digests/logs for ordainment ownership and RNG before/arena/restore phases.
-- [ ] Add a focused contract check, build all MP projects, deploy with backup, and package the two-DLL release.
+- [x] Scope enemy ordainment to the Arena enemy side and clear the native `run_test_boss_modifier` preference on every launch exit/failure.
+- [x] Add an Arena-only RNG context: snapshot the current Run `RandomContainer`, seed combat/BOSS/AI/effect streams independently, and restore the exact Run state on every exit path.
+- [x] Replace direct `UnityEngine.Random` Arena selection with a private Arena PRNG so UI-side rolls cannot consume the Run random state.
+- [x] Add runtime digests/logs for ordainment ownership and RNG before/arena/restore phases.
+- [x] Add a focused contract check, build all MP projects, deploy with backup, and package the three-DLL release.
+- [ ] Run a full in-game Arena matrix from Altar, Embark, and Driving with/without ordainment and verify post-Arena Run RNG digest against a control run.
