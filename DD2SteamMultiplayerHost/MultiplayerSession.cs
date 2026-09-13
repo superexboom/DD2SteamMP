@@ -562,6 +562,12 @@ namespace DD2SteamMultiplayerHost
             return snapshot != null;
         }
 
+        public void ClearPendingCombatTurn(string reason)
+        {
+            _turnCoordinator.ClearTurn(string.IsNullOrWhiteSpace(reason) ? "cleared" : reason);
+            PublishCurrentInteractionSnapshot();
+        }
+
         public void SendBattleResult(BattleResultPayload payload)
         {
             if (!_lobby.IsHost || payload == null)

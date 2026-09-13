@@ -35,7 +35,7 @@ namespace DD2SteamMultiplayerHost.Adapter
             switch (command)
             {
                 case ExecuteSkillCommand execute:
-                    ExecuteSkill(execute);
+                    TryExecuteSkill(execute);
                     break;
                 case PassTurnCommand pass:
                     PassTurn(pass);
@@ -43,28 +43,28 @@ namespace DD2SteamMultiplayerHost.Adapter
             }
         }
 
-        private static void ExecuteSkill(ExecuteSkillCommand command)
+        private static bool TryExecuteSkill(ExecuteSkillCommand command)
         {
             if (!TryValidateActiveTurn(command.ActorGuid, out uint actorGuid, out CombatBhv combat, out ActorInstance actor))
             {
-                return;
+                return false;
             }
 
             if (!TryParseGuid(command.TargetGuid, "target", out uint targetGuid))
             {
-                return;
+                return false;
             }
 
             if (!TryResolveCurrentCombatActor(targetGuid, out ActorInstance targetActor))
             {
                 LogWarning("Ignoring command: target actor guid " + targetGuid +
                     " was not found in current combat actors. Current combat actors: " + DescribeCurrentCombatActors() + ".");
-                return;
+                return false;
             }
 
             if (!TryValidateSkill(actor, command.SkillId))
             {
-                return;
+                return false;
             }
 
             Log("ExecuteSkill actor=" + actorGuid +
@@ -80,7 +80,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                 LogWarning("Ignoring command: skill selection did not stick for actor " + DescribeActor(actor) +
                     ". requested=" + command.SkillId +
                     ", selected=" + (selectedSkillId ?? "[none]") + ".");
-                return;
+                return false;
             }
 
             if (!actor.Controller.GetIsValidSkillTarget(command.SkillId, targetGuid))
@@ -89,21 +89,62 @@ namespace DD2SteamMultiplayerHost.Adapter
                     " is not valid for skill " + command.SkillId +
                     " from actor " + DescribeActor(actor) +
                     ". Valid targets: " + DescribeValidTargets(actorGuid, command.SkillId) + ".");
-                return;
+                return false;
             }
 
             EventSelectActor.Trigger(targetGuid, true);
+            return true;
         }
 
         private static void PassTurn(PassTurnCommand command)
         {
-            if (!TryValidateActiveTurn(command.ActorGuid, out uint actorGuid, out _, out _))
+            if (!TryValidateActiveTurn(command.ActorGuid, out uint actorGuid, out _, out ActorInstance actor))
             {
                 return;
             }
 
+            string passSkillId = PassSkillSelection.SelectPreferredId(
+                actor.Controller == null
+                    ? null
+                    : actor.Controller.GetValidSkillTargetEntries()
+                    .Where(entry => entry != null &&
+                        entry.m_ValidTargetActorGuids != null &&
+                        entry.m_ValidTargetActorGuids.Contains(actorGuid) &&
+                        IsPassSkill(entry.m_SkillId))
+                    .Select(entry => entry.m_SkillId));
+            if (!string.IsNullOrWhiteSpace(passSkillId))
+            {
+                Log("PassTurn actor=" + actorGuid +
+                    " resolved to skill=" + passSkillId +
+                    ", sender=" + command.SenderName + "/" + command.SenderSteamId + ".");
+                if (TryExecuteSkill(new ExecuteSkillCommand(
+                    command.Round,
+                    command.Turn,
+                    command.HeroSlot,
+                    command.ActorGuid,
+                    passSkillId,
+                    command.ActorGuid,
+                    command.SenderSteamId,
+                    command.SenderName)))
+                {
+                    return;
+                }
+
+                LogWarning("PassTurn actor=" + actorGuid +
+                    " could not execute resolved skill=" + passSkillId + "; falling back to EventBattlePass.");
+            }
+
             Log("PassTurn actor=" + actorGuid + ", sender=" + command.SenderName + "/" + command.SenderSteamId + ".");
             EventBattlePass.Trigger(actorGuid);
+        }
+
+        private static bool IsPassSkill(string skillId)
+        {
+            ActorDataSkill definition = string.IsNullOrWhiteSpace(skillId) ||
+                !SingletonMonoBehaviour<Library<string, ActorDataSkill>>.HasInstance(false)
+                    ? null
+                    : SingletonMonoBehaviour<Library<string, ActorDataSkill>>.Instance.GetLibraryElement(skillId);
+            return definition != null && definition.IsPassSkill;
         }
 
         public void LogCombatState()
@@ -184,6 +225,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                 {
                     Round = combat.CurrentRound,
                     Turn = combat.CurrentTurn,
+                    RestoreGeneration = DD2SteamMultiplayerRunner.CurrentRestoreGeneration,
                     BattleState = Convert.ToString(combat.CurrentBattleState),
                     NextState = Convert.ToString(combat.GetNextState()),
                     PartyInBattle = combat.IsPartyInBattle,
@@ -924,6 +966,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                 snapshot.CurrentActorName + ":" +
                 snapshot.CurrentFirstTurnActorGuid + ":" +
                 snapshot.CurrentLastTurnActorGuid + ":" +
+                snapshot.RestoreGeneration + ":" +
                 DescribeSelectedSkill(snapshot.SelectedSkill) + ":" +
                 string.Join("|", (snapshot.TurnOrder ?? Array.Empty<CombatTurnOrderEntryPayload>()).Select(entry =>
                     entry.Index + "," +

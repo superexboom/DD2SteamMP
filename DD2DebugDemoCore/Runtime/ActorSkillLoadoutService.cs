@@ -19,6 +19,72 @@ namespace DD2DebugDemoCore.Runtime
         private const string DeprecatedGenericMoveSkillId = "move";
         private const string HealingPassSkillId = "pass_heal";
 
+        private const string AbominationActorId = "abomination";
+        private const int AbominationMaxSkillsWithTransform = 10;
+        private const int DefaultMaxSkills = 5;
+        private static readonly string[] AbominationTransformPrefixes = { "abm_transform", "abm_revert" };
+        private static readonly string[] AbominationBeastSkillPrefixes = { "abm_rake", "abm_rage", "abm_maul", "abm_slam", "abm_howl" };
+
+        private static bool IsAbominationActor(ActorInstance actor)
+        {
+            return actor != null &&
+                !string.IsNullOrWhiteSpace(actor.ActorDataId) &&
+                string.Equals(actor.ActorDataId.Trim(), AbominationActorId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAbominationTransformSkill(string skillId)
+        {
+            if (string.IsNullOrWhiteSpace(skillId))
+            {
+                return false;
+            }
+
+            string id = skillId.Trim();
+            foreach (string prefix in AbominationTransformPrefixes)
+            {
+                if (id.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsAbominationBeastSkill(string skillId)
+        {
+            if (string.IsNullOrWhiteSpace(skillId))
+            {
+                return false;
+            }
+
+            string id = skillId.Trim();
+            if (id.EndsWith("_u", StringComparison.Ordinal))
+            {
+                id = id.Substring(0, id.Length - 2);
+            }
+
+            foreach (string prefix in AbominationBeastSkillPrefixes)
+            {
+                if (id.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int GetMaxSkillsForActor(ActorInstance actor, IReadOnlyList<string> skillIds)
+        {
+            if (!IsAbominationActor(actor))
+            {
+                return DefaultMaxSkills;
+            }
+
+            return AbominationMaxSkillsWithTransform;
+        }
+
         private static readonly string[] GenericEnemySystemSkillIds =
         {
             GenericMonsterMoveSkillId,
@@ -52,9 +118,10 @@ namespace DD2DebugDemoCore.Runtime
                 return false;
             }
 
-            if (normalizedTargetSkillIds.Count < 1 || normalizedTargetSkillIds.Count > 5)
+            int maxSkills = GetMaxSkillsForActor(actor, normalizedTargetSkillIds);
+            if (normalizedTargetSkillIds.Count < 1 || normalizedTargetSkillIds.Count > maxSkills)
             {
-                error = "draft needs 1-5 skills; found " + normalizedTargetSkillIds.Count;
+                error = "draft needs 1-" + maxSkills + " skills; found " + normalizedTargetSkillIds.Count;
                 return false;
             }
 
@@ -97,13 +164,19 @@ namespace DD2DebugDemoCore.Runtime
 
             actor.RefreshStats();
 
-            List<string> afterSkillIds = GetDraftRelevantEquippedSkillIds(actor);
-            if (!SkillIdSetsEqual(afterSkillIds, normalizedTargetSkillIds))
+            List<string> rawAfterSkillIds = GetEquippedSkillIds(actor);
+            List<string> afterSkillIds = GetDraftRelevantSkillIds(rawAfterSkillIds);
+
+            HashSet<string> equippedSet = new HashSet<string>(rawAfterSkillIds, StringComparer.Ordinal);
+            foreach (string targetSkillId in normalizedTargetSkillIds)
             {
-                error = "game did not apply draft skills for " + DescribeActor(actor) +
-                    "; expected=" + string.Join(",", normalizedTargetSkillIds.ToArray()) +
-                    ", actual=" + string.Join(",", GetEquippedSkillIds(actor).ToArray());
-                return false;
+                if (!equippedSet.Contains(targetSkillId))
+                {
+                    error = "game did not apply draft skill " + targetSkillId + " for " + DescribeActor(actor) +
+                        "; expected=" + string.Join(",", normalizedTargetSkillIds.ToArray()) +
+                        ", actual=" + string.Join(",", rawAfterSkillIds.ToArray());
+                    return false;
+                }
             }
 
             changed = removedDuplicateSkills > 0 ||
@@ -886,8 +959,22 @@ namespace DD2DebugDemoCore.Runtime
 
             if (!skill.GetIsUnlocked())
             {
-                error = "skill " + skillId + " is locked on actor " + DescribeActor(actor);
-                return false;
+                try
+                {
+                    skill.SetIsUnlocked();
+                }
+                catch (Exception ex)
+                {
+                    error = "skill " + skillId + " is locked on actor " + DescribeActor(actor) +
+                        " and could not be force-unlocked: " + ex.Message;
+                    return false;
+                }
+
+                if (!skill.GetIsUnlocked())
+                {
+                    error = "skill " + skillId + " is locked on actor " + DescribeActor(actor);
+                    return false;
+                }
             }
 
             return true;
@@ -895,9 +982,19 @@ namespace DD2DebugDemoCore.Runtime
 
         private static List<string> GetEquippedSkillIds(ActorInstance actor)
         {
-            return actor == null
-                ? new List<string>()
-                : actor.GetEquippedCombatSkillIds(null, false, false, false, false, false, true).ToList();
+            if (actor == null)
+            {
+                return new List<string>();
+            }
+
+            try
+            {
+                return actor.GetEquippedCombatSkillIds(null, false, false, false, false, false, true).ToList();
+            }
+            catch (Exception)
+            {
+                return new List<string>();
+            }
         }
 
         private static bool SkillIdSetsEqual(IReadOnlyList<string> left, IReadOnlyList<string> right)

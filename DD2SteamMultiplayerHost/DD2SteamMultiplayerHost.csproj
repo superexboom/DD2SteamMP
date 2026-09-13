@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="ArenaTrinketOrderingSelfCheck.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="UnityEngine">
       <HintPath>$(ManagedDir)\UnityEngine.dll</HintPath>
       <Private>false</Private>
@@ -47,6 +51,10 @@
     </Reference>
     <Reference Include="Unity.InputSystem">
       <HintPath>$(ManagedDir)\Unity.InputSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(ManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="IronCrown">

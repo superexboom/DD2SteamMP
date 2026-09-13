@@ -88,7 +88,24 @@ namespace DD2DebugDemoCore.Runtime
                     return true;
                 }
 
-                actor.GetTrinketInventory().AddItems(definition, 1, false);
+                // Check native item conditions before AddItems; invalid trinkets are
+                // otherwise moved to the player inventory by TrinketItemInventory.
+                if (!actor.GetIsItemConditionsMet(definition))
+                {
+                    error = "trinket conditions are not met for " + itemId + " on " +
+                        ActorSkillLoadoutService.DescribeActor(actor) +
+                        " (check prerequisite trinkets)";
+                    return false;
+                }
+
+                int remainder = actor.GetTrinketInventory().AddItems(definition, 1, false);
+                if (remainder != 0 || !HasInventoryItem(actor.GetTrinketInventory(), itemId, ItemType.TRINKET))
+                {
+                    error = "game rejected trinket " + itemId + " for " +
+                        ActorSkillLoadoutService.DescribeActor(actor);
+                    return false;
+                }
+
                 _log.Info("Applied trinket " + itemId + " to " + ActorSkillLoadoutService.DescribeActor(actor) + ".");
                 return true;
             }

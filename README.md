@@ -17,6 +17,8 @@ This project is not affiliated with Red Hook Studios. It is a research/debugging
 - Client mirror HUDs for combat, map, inventory/run status, store/loadout flows, and custom debug-demo setup.
 - Custom debug-demo/PvP battle setup, including hero presets, monster presets, waves, torch/confession options, and selected arena modifiers.
 
+BattleUndo compatibility bridge: the host exposes `DD2SteamMultiplayerRunner.NotifyUndoRestoreBegin(restoreId)` and `NotifyUndoRestoreComplete(restoreId, success)`. An undo integration may discover these static entry points by reflection. Begin increments the restore generation, clears the pending turn and auto-turn memory, and forces the next combat and DamageMeter snapshots; completion or rejection clears transient state again and schedules fresh snapshots. Call these methods on Unity's main thread; clients must not restore locally.
+
 ## Important Limitations
 
 - Clients do not run a fully synchronized native DD2 scene. The practical target is remote control plus mirror UI, not deterministic Unity scene replication.

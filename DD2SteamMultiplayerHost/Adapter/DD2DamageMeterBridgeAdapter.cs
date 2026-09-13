@@ -152,6 +152,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                 BattleState = GetString(source, "BattleState", combatSnapshot == null ? null : combatSnapshot.BattleState),
                 CurrentActorGuid = GetString(source, "CurrentActorGuid", combatSnapshot == null ? null : combatSnapshot.CurrentActorGuid),
                 CurrentActorName = GetString(source, "CurrentActorName", combatSnapshot == null ? null : combatSnapshot.CurrentActorName),
+                RestoreGeneration = combatSnapshot == null ? DD2SteamMultiplayerRunner.CurrentRestoreGeneration : combatSnapshot.RestoreGeneration,
                 PlayerTotalDamage = GetFloat(source, "PlayerTotalDamage", 0f),
                 EnemyTotalDamage = GetFloat(source, "EnemyTotalDamage", 0f),
                 Heroes = ReadActorRows(GetFirstPropertyValue(source, "Heroes", "PlayerStats")),
@@ -187,8 +188,9 @@ namespace DD2SteamMultiplayerHost.Adapter
                 BattleState = combatSnapshot == null ? null : combatSnapshot.BattleState,
                 CurrentActorGuid = combatSnapshot == null ? null : combatSnapshot.CurrentActorGuid,
                 CurrentActorName = combatSnapshot == null ? null : combatSnapshot.CurrentActorName,
+                RestoreGeneration = combatSnapshot == null ? DD2SteamMultiplayerRunner.CurrentRestoreGeneration : combatSnapshot.RestoreGeneration,
             };
-            snapshot.Digest = ComputeStableDigest("unavailable:" + normalizedReason);
+            snapshot.Digest = ComputeStableDigest("unavailable:" + normalizedReason + ":epoch=" + snapshot.RestoreGeneration);
             return snapshot;
         }
 
@@ -441,6 +443,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                 snapshot.Turn + ":" +
                 snapshot.BattleState + ":" +
                 snapshot.CurrentActorGuid + ":" +
+                snapshot.RestoreGeneration + ":" +
                 snapshot.PlayerTotalDamage.ToString("0.###", CultureInfo.InvariantCulture) + ":" +
                 snapshot.EnemyTotalDamage.ToString("0.###", CultureInfo.InvariantCulture) + ":" +
                 string.Join("|", (snapshot.Heroes ?? new List<DamageMeterActorStatsPayload>())

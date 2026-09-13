@@ -55,9 +55,17 @@ namespace DD2SteamMultiplayerHost
 {
     public sealed class DD2SteamMultiplayerRunner : MonoBehaviour
     {
-        private const float PanelMinWidth = 520f;
-        private const float PanelMinHeight = 360f;
-        private const float PanelResizeHandleSize = 22f;
+        private const float ArenaHeroSetupDesignWidth = 1520f;
+        private const float ArenaHeroSetupDesignHeight = 1040f;
+        private const float ArenaHeroSetupMinScale = 0.80f;
+        private const float ArenaHeroSetupMinPhysicalHeight = 700f;
+        private const float PanelMinWidth = 864f;
+        private const float PanelMinHeight = 432f;
+        private const float PanelResizeHandleSize = 26f;
+        private const float ArenaHeroSetupMinWidth = 1180f;
+        private const float ArenaHeroSetupMinHeight = 820f;
+        private const float ArenaPresetBrowserMinWidth = 1056f;
+        private const float ArenaPresetBrowserMinHeight = 672f;
         private const float MirrorHudMinWidth = 900f;
         private const float MirrorHudMinHeight = 540f;
         private const int MaxSnapshotPollsPerFrame = 2;
@@ -85,8 +93,22 @@ namespace DD2SteamMultiplayerHost
         private const float MirrorHudMapRouteIconSize = 30f;
         private static readonly bool SnapshotPerfLoggingEnabled = false;
 
-        private static readonly Color PanelTextColor = new Color(0.92f, 0.95f, 0.98f, 1f);
-        private static readonly Color PanelMutedTextColor = new Color(0.66f, 0.72f, 0.78f, 1f);
+private static readonly Color PanelTextColor = new Color(0.90f, 0.93f, 0.97f, 1f);
+private static readonly Color PanelMutedTextColor = new Color(0.62f, 0.68f, 0.78f, 1f);
+private static readonly Color PanelAccentColor = new Color(0.45f, 0.64f, 0.92f, 1f);
+private static readonly Color PanelAccentDimColor = new Color(0.18f, 0.30f, 0.48f, 1f);
+private static readonly Color PanelDangerColor = new Color(0.86f, 0.42f, 0.42f, 1f);
+private static readonly Color PanelSuccessColor = new Color(0.38f, 0.74f, 0.58f, 1f);
+private static readonly Color PanelBeastColor = new Color(0.36f, 0.14f, 0.16f, 0.92f);
+private static readonly Color PanelHumanColor = new Color(0.14f, 0.20f, 0.32f, 0.92f);
+private static readonly Color PanelWindowColor = new Color(0.07f, 0.08f, 0.11f, 0.97f);
+private static readonly Color PanelBodyColor = new Color(0.10f, 0.11f, 0.15f, 0.98f);
+private static readonly Color PanelHeaderTopColor = new Color(0.13f, 0.15f, 0.21f, 1f);
+private static readonly Color PanelHeaderBottomColor = new Color(0.09f, 0.10f, 0.14f, 1f);
+private static readonly Color PanelBorderColor = new Color(0.32f, 0.40f, 0.55f, 0.80f);
+private static readonly Color PanelTabBarColor = new Color(0.06f, 0.07f, 0.10f, 1f);
+private static readonly Color PanelChipReadyColor = new Color(0.10f, 0.22f, 0.16f, 0.98f);
+private static readonly Color PanelChipBlockedColor = new Color(0.28f, 0.12f, 0.12f, 0.98f);
         private static readonly Color HudBackgroundColor = new Color(0.03f, 0.035f, 0.04f, 0.96f);
         private static readonly Color HudPanelColor = new Color(0.10f, 0.12f, 0.14f, 0.92f);
         private static readonly Color HudCardColor = new Color(0.15f, 0.17f, 0.19f, 0.95f);
@@ -119,6 +141,7 @@ namespace DD2SteamMultiplayerHost
             new ArenaTorchConfessionProfile("body", "Cowardice", "怯懦"),
         };
         private static DD2SteamMultiplayerRunner _activeArenaRunner;
+        private static long _restoreGeneration;
         private static bool _arenaBattleModifierPatchInstalled;
         private static bool _arenaBattleModifierPatchFailedLogged;
         private static bool _nativeHotkeyBlockPatchInstalled;
@@ -174,6 +197,10 @@ namespace DD2SteamMultiplayerHost
         private float _nextDamageMeterSnapshotForcedSendTime;
         private float _nextSteamIdentityAttempt;
         private bool _autoTurnPromptsEnabled = true;
+        private bool _bindCoopControlsToHeroes;
+        private bool _arenaHeroVsHeroAtLaunch;
+        private readonly Dictionary<uint, int> _coopHeroControlSlots = new Dictionary<uint, int>();
+        private readonly int[] _arenaDraftControlSlots = new int[4];
         private bool _arenaPendingLaunch;
         private bool _arenaDebugControlsSuppressed;
         private bool _arenaDebugControlsEnteredCombat;
@@ -203,6 +230,7 @@ namespace DD2SteamMultiplayerHost
         private string _lastStoreSnapshotDigest;
         private string _lastStagecoachSnapshotDigest;
         private string _lastDamageMeterSnapshotDigest;
+        private bool _undoRestoreInProgress;
         private string _lastAppliedLocalDamageMeterDigest;
         private bool _damageMeterRemoteApplyChecked;
         private Type _damageMeterRemoteApiType;
@@ -221,11 +249,13 @@ namespace DD2SteamMultiplayerHost
         private UiLanguage _uiLanguage = IsChineseCultureDefault() ? UiLanguage.Chinese : UiLanguage.English;
         private bool _arenaBattlePresetBrowserVisible;
         private bool _arenaHeroSetupVisible;
+private bool _arenaTorchPanelVisible;
         private bool _panelResizing;
         private bool _panelResizeChangedThisFrame;
-        private Rect _panelRect = new Rect(32f, 80f, 820f, 720f);
-        private Rect _arenaBattlePresetBrowserRect = new Rect(72f, 64f, 1240f, 820f);
-        private Rect _arenaHeroSetupRect = new Rect(96f, 88f, 1160f, 760f);
+        private Rect _panelRect = new Rect(32f, 64f, 1224f, 864f);
+        private Rect _arenaBattlePresetBrowserRect = new Rect(48f, 40f, 1488f, 984f);
+        private Rect _arenaHeroSetupRect = new Rect(40f, 28f, 1520f, 1040f);
+        private readonly List<Rect> _uiBlockingRectBuffer = new List<Rect>(4);
         private Vector2 _panelScroll;
         private Vector2 _mirrorHudScroll;
         private Vector2 _mirrorHudMapScroll;
@@ -335,24 +365,45 @@ namespace DD2SteamMultiplayerHost
         private bool _hoverTooltipHasScreenPosition;
         private PanelTab _panelTab = PanelTab.Home;
         private ArenaHeroDetailTab _arenaHeroDetailTab = ArenaHeroDetailTab.Skills;
+        private ArenaQuirkKind _arenaQuirkBrowseKind = ArenaQuirkKind.Positive;
+        private bool _arenaHeroPathSectionExpanded;
         private ArenaBattleAdvantageMode _arenaBattleAdvantageMode = ArenaBattleAdvantageMode.None;
         private bool _panelStylesReady;
+        private readonly List<Texture2D> _panelOwnedTextures = new List<Texture2D>(48);
         private Texture2D _panelWindowTexture;
         private Texture2D _panelBodyTexture;
         private Texture2D _panelHeaderTexture;
         private Texture2D _panelTabTexture;
         private Texture2D _panelTabActiveTexture;
+        private Texture2D _panelTabHoverTexture;
         private Texture2D _panelSeparatorTexture;
+private Texture2D _panelAccentTexture;
+private Texture2D _panelHeaderGradientTexture;
+private Texture2D _panelSectionTexture;
+private Texture2D _panelBeastSectionTexture;
+private Texture2D _panelHumanSectionTexture;
+        private Texture2D _panelBannerIdleTexture;
+        private Texture2D _panelBannerPendingTexture;
+        private Texture2D _panelBannerErrorTexture;
+        private Texture2D _panelStatusPillTexture;
         private GUIStyle _panelWindowStyle;
         private GUIStyle _panelBodyStyle;
         private GUIStyle _panelHeaderStyle;
         private GUIStyle _panelTitleStyle;
+        private GUIStyle _panelSubtitleStyle;
         private GUIStyle _panelStatusStyle;
+        private GUIStyle _panelStatusPillStyle;
         private GUIStyle _panelTabStyle;
         private GUIStyle _panelTabActiveStyle;
         private GUIStyle _panelContentStyle;
         private GUIStyle _panelResizeHandleStyle;
         private GUIStyle _panelSeparatorStyle;
+private GUIStyle _panelAccentLineStyle;
+private GUIStyle _panelSectionHeaderStyle;
+private GUIStyle _panelAccentButtonStyle;
+private GUIStyle _panelDangerButtonStyle;
+private GUIStyle _panelSuccessButtonStyle;
+private GUIStyle _panelSubButtonStyle;
         private SteamLobbyClient _lobbyClient;
         private SteamMessageTransport _messageTransport;
         private MultiplayerSession _session;
@@ -621,6 +672,13 @@ namespace DD2SteamMultiplayerHost
             public readonly List<string> NegativeQuirkIds = new List<string>();
         }
 
+        private sealed class CoopHeroBindingCandidate
+        {
+            public int ConfigSlot;
+            public uint ActorGuid;
+            public string DisplayName;
+        }
+
         private static ArenaHeroDraftSlot[] CreateArenaHeroDraftSlots()
         {
             ArenaHeroDraftSlot[] slots = new ArenaHeroDraftSlot[4];
@@ -781,12 +839,17 @@ namespace DD2SteamMultiplayerHost
             InitializeCommandFileCursor();
             LogControls();
             HostLog.Write("Command file: " + HostPaths.CommandPath);
+            UiInputBlocker.EnsurePatchesInstalled();
         }
 
-        private void Update()
-        {
-            HandleHotkeys();
-            PollCommandFile();
+private void Update()
+{
+            UiInputBlocker.EarlyUpdate();
+            PublishUiBlockingRects();
+HandleHotkeys();
+            // Hotkeys may toggle F6/F7; republish so same-frame GetPointerValues sees new rects.
+            PublishUiBlockingRects();
+PollCommandFile();
             PollPendingArenaLaunch();
             PollArenaDebugControlSuppression();
             PollArenaResultBypass();
@@ -877,6 +940,68 @@ namespace DD2SteamMultiplayerHost
             {
                 LogCompatibilityAssemblies();
             }
+        }
+
+        /// <summary>
+        /// Called by an optional local undo integration. All work runs on Unity's
+        /// main thread because the runner owns the session and turn coordinator.
+        /// </summary>
+        public static long NotifyUndoRestoreBegin(string restoreId)
+        {
+            DD2SteamMultiplayerRunner runner = _activeArenaRunner;
+            if (runner == null) return 0L;
+            return runner.BeginUndoRestore(restoreId);
+        }
+
+        public static bool NotifyUndoRestoreComplete(string restoreId, bool success)
+        {
+            DD2SteamMultiplayerRunner runner = _activeArenaRunner;
+            return runner != null && runner.EndUndoRestore(restoreId, success);
+        }
+
+        public static long CurrentRestoreGeneration => _restoreGeneration;
+
+        private long BeginUndoRestore(string restoreId)
+        {
+            if (_lobbyClient != null && _lobbyClient.IsInLobby && !_lobbyClient.IsHost)
+            {
+                HostLog.Write("[undo] restore rejected for client id=" + (restoreId ?? "[none]") + ". Only the host may restore.");
+                return 0L;
+            }
+
+            _undoRestoreInProgress = true;
+            long generation = ++_restoreGeneration;
+            ResetAutoTurnMemory();
+            if (_session != null)
+            {
+                _session.ClearPendingCombatTurn("undo-restore");
+            }
+            _lastCombatSnapshotDigest = null;
+            _lastDamageMeterSnapshotDigest = null;
+            _nextCombatSnapshotPollTime = 0f;
+            _nextDamageMeterSnapshotPollTime = 0f;
+            HostLog.Write("[undo] restore started id=" + (restoreId ?? "[none]") +
+                ", generation=" + generation + ". Pending turn cleared; snapshots forced.");
+            return generation;
+        }
+
+        private bool EndUndoRestore(string restoreId, bool success)
+        {
+            if (!_undoRestoreInProgress)
+            {
+                return false;
+            }
+
+            _undoRestoreInProgress = false;
+            ResetAutoTurnMemory();
+            _lastCombatSnapshotDigest = null;
+            _lastDamageMeterSnapshotDigest = null;
+            _nextCombatSnapshotPollTime = 0f;
+            _nextDamageMeterSnapshotPollTime = 0f;
+            HostLog.Write("[undo] restore " + (success ? "completed" : "rejected") +
+                " id=" + (restoreId ?? "[none]") + ", generation=" + _restoreGeneration +
+                ". Fresh snapshots scheduled.");
+            return true;
         }
 
         private void OnDestroy()
@@ -1049,10 +1174,10 @@ namespace DD2SteamMultiplayerHost
 
                     HostLog.Write("Mirror HUD visible=" + _mirrorHudVisible + ".");
                 }
-                else if (keyboard[Key.F8].wasPressedThisFrame)
-                {
-                    _lobbyClient.DumpLobby();
-                }
+else if (keyboard[Key.F8].wasPressedThisFrame)
+{
+_lobbyClient.DumpLobby();
+}
                 else if (keyboard[Key.F7].wasPressedThisFrame)
                 {
                     _panelVisible = !_panelVisible;
@@ -1494,6 +1619,20 @@ namespace DD2SteamMultiplayerHost
 
             _arenaBattleModifierOverrideArmed = false;
             _arenaBattleModifierOverrideLogKey = null;
+            bool wasArenaLaunch = !string.IsNullOrWhiteSpace(_arenaLastLaunchBattleConfigId) &&
+                (_arenaHeroVsHeroAtLaunch ||
+                 _arenaPendingLaunch ||
+                 _arenaDebugControlsSuppressed ||
+                 _arenaResultBypassArmed ||
+                 _arenaWaitingForNextBattle ||
+                 _arenaPostBattleMainMenuReturnPending ||
+                 _arenaPostBattleMainMenuReturnRequested);
+            _arenaHeroVsHeroAtLaunch = false;
+            if (wasArenaLaunch)
+            {
+                _coopHeroControlSlots.Clear();
+                _arenaLastLaunchBattleConfigId = string.Empty;
+            }
             ClearArenaBattleModifierEditorPrefs();
             ReleaseArenaTorchOverride(reason);
         }
@@ -1770,9 +1909,15 @@ namespace DD2SteamMultiplayerHost
             }
         }
 
-        private void OnGUI()
-        {
-            bool drawHostVoteUi =
+private void LateUpdate()
+{
+            // Keep shields/rects aligned after any same-frame window drag from OnGUI.
+            PublishUiBlockingRects();
+}
+
+private void OnGUI()
+{
+bool drawHostVoteUi =
                 !_panelVisible &&
                 !_mirrorHudVisible &&
                 !_arenaBattlePresetBrowserVisible &&
@@ -1785,8 +1930,12 @@ namespace DD2SteamMultiplayerHost
                 !_arenaHeroSetupVisible &&
                 !drawHostVoteUi)
             {
+                UiInputBlocker.Clear();
                 return;
             }
+
+            UiInputBlocker.EnsurePatchesInstalled();
+            UiInputBlocker.BeginFrame();
 
             if (drawHostVoteUi)
             {
@@ -1843,6 +1992,7 @@ namespace DD2SteamMultiplayerHost
                         _panelRect = returnedRect;
                     }
 
+                    UiInputBlocker.RegisterRect(_panelRect, 1f);
                     DrawFloatingTooltip();
                 }
                 catch (Exception ex)
@@ -1882,6 +2032,7 @@ namespace DD2SteamMultiplayerHost
                         _arenaBattlePresetBrowserRect = returnedRect;
                     }
 
+                    UiInputBlocker.RegisterRect(_arenaBattlePresetBrowserRect, 1f);
                     DrawFloatingTooltip();
                 }
                 catch (Exception ex)
@@ -1901,12 +2052,32 @@ namespace DD2SteamMultiplayerHost
                     _hoverTooltipHasScreenPosition = false;
                     ClampArenaHeroSetupRectToScreen();
                     _arenaHeroSetupResizeChangedThisFrame = false;
-                    Rect returnedRect = GUI.Window(
-                        GetInstanceID() + 3072,
-                        _arenaHeroSetupRect,
-                        DrawArenaHeroSetupWindow,
-                        string.Empty,
-                        _panelWindowStyle);
+                    float setupScale = GetArenaHeroSetupScale();
+                    Matrix4x4 oldMatrix = GUI.matrix;
+                    GUI.matrix = Matrix4x4.Scale(new Vector3(setupScale, setupScale, 1f));
+                    Vector2 oldTooltipScreenPosition = _hoverTooltipScreenPosition;
+                    Rect returnedRect;
+                    try
+                    {
+                        returnedRect = GUI.Window(
+                            GetInstanceID() + 3072,
+                            _arenaHeroSetupRect,
+                            DrawArenaHeroSetupWindow,
+                            string.Empty,
+                            _panelWindowStyle);
+                    }
+                    finally
+                    {
+                        GUI.matrix = oldMatrix;
+                    }
+                    if (_hoverTooltipHasScreenPosition)
+                    {
+                        _hoverTooltipScreenPosition *= setupScale;
+                    }
+                    else
+                    {
+                        _hoverTooltipScreenPosition = oldTooltipScreenPosition;
+                    }
                     if (_arenaHeroSetupResizing || _arenaHeroSetupResizeChangedThisFrame)
                     {
                         _arenaHeroSetupRect.x = returnedRect.x;
@@ -1917,6 +2088,7 @@ namespace DD2SteamMultiplayerHost
                         _arenaHeroSetupRect = returnedRect;
                     }
 
+                    UiInputBlocker.RegisterRect(_arenaHeroSetupRect, setupScale);
                     DrawFloatingTooltip();
                 }
                 catch (Exception ex)
@@ -1925,6 +2097,45 @@ namespace DD2SteamMultiplayerHost
                     HostLog.Write("[arena] Hero setup window rendering failed: " + ex.Message);
                 }
             }
+
+            UiInputBlocker.EndFrame();
+        }
+
+        private void PublishUiBlockingRects()
+        {
+            _uiBlockingRectBuffer.Clear();
+            if (_mirrorHudVisible)
+            {
+                _uiBlockingRectBuffer.Add(new Rect(0f, 0f, Screen.width, Screen.height));
+            }
+
+            if (_panelVisible)
+            {
+                _uiBlockingRectBuffer.Add(_panelRect);
+            }
+
+            if (_arenaBattlePresetBrowserVisible)
+            {
+                _uiBlockingRectBuffer.Add(_arenaBattlePresetBrowserRect);
+            }
+
+            if (_arenaHeroSetupVisible)
+            {
+                float scale = GetArenaHeroSetupScale();
+                _uiBlockingRectBuffer.Add(new Rect(
+                    _arenaHeroSetupRect.x * scale,
+                    _arenaHeroSetupRect.y * scale,
+                    _arenaHeroSetupRect.width * scale,
+                    _arenaHeroSetupRect.height * scale));
+            }
+
+            if (_uiBlockingRectBuffer.Count == 0)
+            {
+                UiInputBlocker.Clear();
+                return;
+            }
+
+            UiInputBlocker.SetGuiBlockingRects(_uiBlockingRectBuffer);
         }
 
         private void DrawMirrorHudOverlay()
@@ -1953,6 +2164,7 @@ namespace DD2SteamMultiplayerHost
                 Rect screen = new Rect(0f, 0f, Screen.width, Screen.height);
                 DrawSolidRect(screen, HudBackgroundColor);
                 DrawMirrorHudTopBar(screen);
+                UiInputBlocker.RegisterRect(screen, 1f);
 
                 CombatSnapshotPayload combat;
                 if (_session != null &&
@@ -5367,24 +5579,30 @@ namespace DD2SteamMultiplayerHost
             Color oldLabelTextColor = GUI.skin.label.normal.textColor;
             int oldButtonFontSize = GUI.skin.button.fontSize;
             int oldTextFieldFontSize = GUI.skin.textField.fontSize;
+            GUIStyle oldButtonStyle = GUI.skin.button;
 
             try
             {
                 GUI.contentColor = PanelTextColor;
                 GUI.backgroundColor = Color.white;
-                GUI.skin.label.fontSize = 13;
+                GUI.skin.label.fontSize = 16;
                 GUI.skin.label.normal.textColor = PanelTextColor;
-                GUI.skin.button.fontSize = 13;
-                GUI.skin.textField.fontSize = 13;
+                GUI.skin.button = _panelSubButtonStyle;
+                GUI.skin.textField.fontSize = 15;
 
                 GUILayout.BeginVertical(_panelBodyStyle, GUILayout.ExpandHeight(true));
 
-                GUILayout.BeginHorizontal(_panelHeaderStyle, GUILayout.Height(38f));
+                GUILayout.BeginVertical(_panelHeaderStyle);
+                GUILayout.BeginHorizontal();
+                GUILayout.BeginVertical();
                 GUILayout.Label("DD2 Steam MP", _panelTitleStyle);
+                GUILayout.Label(Ui("Host control panel", "主机控制面板"), _panelSubtitleStyle);
+                GUILayout.EndVertical();
                 GUILayout.FlexibleSpace();
-                GUILayout.Label(GetPanelHeaderStatus(), _panelStatusStyle);
+                DrawPanelHeaderStatusPill();
                 DrawUiLanguageToggle();
                 GUILayout.EndHorizontal();
+                GUILayout.EndVertical();
 
                 DrawPanelTabs();
 
@@ -5396,7 +5614,7 @@ namespace DD2SteamMultiplayerHost
 
                 GUILayout.EndVertical();
                 DrawPanelResizeHandle();
-                GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, _panelRect.width - PanelResizeHandleSize), 38f));
+                GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, _panelRect.width - PanelResizeHandleSize), 56f));
             }
             finally
             {
@@ -5404,6 +5622,7 @@ namespace DD2SteamMultiplayerHost
                 GUI.backgroundColor = oldBackgroundColor;
                 GUI.skin.label.fontSize = oldLabelFontSize;
                 GUI.skin.label.normal.textColor = oldLabelTextColor;
+                GUI.skin.button = oldButtonStyle;
                 GUI.skin.button.fontSize = oldButtonFontSize;
                 GUI.skin.textField.fontSize = oldTextFieldFontSize;
             }
@@ -5416,66 +5635,98 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
-            _panelWindowTexture = CreatePanelTexture(new Color(0.07f, 0.08f, 0.10f, 1f));
-            _panelBodyTexture = CreatePanelTexture(new Color(0.09f, 0.11f, 0.14f, 1f));
-            _panelHeaderTexture = CreatePanelTexture(new Color(0.13f, 0.16f, 0.20f, 1f));
-            _panelTabTexture = CreatePanelTexture(new Color(0.16f, 0.19f, 0.23f, 1f));
-            _panelTabActiveTexture = CreatePanelTexture(new Color(0.10f, 0.36f, 0.43f, 1f));
-            _panelSeparatorTexture = CreatePanelTexture(new Color(0.27f, 0.32f, 0.38f, 1f));
+            const int windowRadius = 18;
+            const int controlRadius = 8;
+
+            _panelWindowTexture = OwnPanelTexture(CreateRoundedRectTexture(PanelWindowColor, PanelBorderColor, 64, windowRadius, 2));
+            _panelBodyTexture = OwnPanelTexture(CreateRoundedRectTexture(PanelBodyColor, new Color(0f, 0f, 0f, 0f), 32, 4, 0));
+            _panelHeaderTexture = OwnPanelTexture(CreatePanelTexture(PanelHeaderTopColor));
+            _panelTabTexture = OwnPanelTexture(CreateRoundedRectTexture(new Color(0.14f, 0.16f, 0.22f, 1f), new Color(0.28f, 0.34f, 0.46f, 0.55f), 32, 8, 1));
+            _panelTabHoverTexture = OwnPanelTexture(CreateRoundedRectTexture(new Color(0.18f, 0.22f, 0.30f, 1f), new Color(0.42f, 0.55f, 0.78f, 0.75f), 32, 8, 1));
+            _panelTabActiveTexture = OwnPanelTexture(CreateRoundedRectTexture(new Color(0.16f, 0.26f, 0.42f, 1f), PanelAccentColor, 32, 8, 2));
+            _panelSeparatorTexture = OwnPanelTexture(CreatePanelTexture(new Color(0.32f, 0.40f, 0.55f, 0.35f)));
+            _panelAccentTexture = OwnPanelTexture(CreatePanelTexture(PanelAccentColor));
+            _panelHeaderGradientTexture = OwnPanelTexture(CreateGradientTexture(PanelHeaderTopColor, PanelHeaderBottomColor));
+            _panelSectionTexture = OwnPanelTexture(CreateRoundedRectTexture(new Color(0.13f, 0.15f, 0.20f, 1f), new Color(0.30f, 0.38f, 0.52f, 0.45f), 32, 6, 1));
+            _panelBeastSectionTexture = OwnPanelTexture(CreatePanelTexture(PanelBeastColor));
+            _panelHumanSectionTexture = OwnPanelTexture(CreatePanelTexture(PanelHumanColor));
+            _panelBannerIdleTexture = OwnPanelTexture(CreateRoundedRectTexture(new Color(0.12f, 0.14f, 0.18f, 0.98f), new Color(0.34f, 0.42f, 0.56f, 0.70f), 32, 8, 1));
+            _panelBannerPendingTexture = OwnPanelTexture(CreateRoundedRectTexture(new Color(0.12f, 0.20f, 0.30f, 0.98f), new Color(0.45f, 0.68f, 0.92f, 0.90f), 32, 8, 1));
+            _panelBannerErrorTexture = OwnPanelTexture(CreateRoundedRectTexture(new Color(0.28f, 0.12f, 0.12f, 0.98f), new Color(0.86f, 0.42f, 0.42f, 0.95f), 32, 8, 1));
+            _panelStatusPillTexture = OwnPanelTexture(CreateRoundedRectTexture(new Color(0.14f, 0.17f, 0.24f, 1f), new Color(0.40f, 0.52f, 0.72f, 0.80f), 32, 10, 1));
 
             _panelWindowStyle = new GUIStyle(GUI.skin.window)
             {
                 padding = new RectOffset(0, 0, 0, 0),
                 margin = new RectOffset(0, 0, 0, 0),
-                border = new RectOffset(1, 1, 1, 1),
+                border = new RectOffset(windowRadius, windowRadius, windowRadius, windowRadius),
             };
             _panelWindowStyle.normal.background = _panelWindowTexture;
             _panelWindowStyle.onNormal.background = _panelWindowTexture;
 
             _panelBodyStyle = new GUIStyle(GUI.skin.box)
             {
-                padding = new RectOffset(10, 10, 10, 10),
+                padding = new RectOffset(14, 14, 12, 12),
                 margin = new RectOffset(0, 0, 0, 0),
+                border = new RectOffset(4, 4, 4, 4),
             };
             _panelBodyStyle.normal.background = _panelBodyTexture;
 
             _panelHeaderStyle = new GUIStyle(GUI.skin.box)
             {
-                padding = new RectOffset(12, 12, 6, 6),
-                margin = new RectOffset(0, 0, 0, 8),
+                padding = new RectOffset(16, 16, 12, 10),
+                margin = new RectOffset(0, 0, 0, 0),
                 alignment = TextAnchor.MiddleLeft,
             };
-            _panelHeaderStyle.normal.background = _panelHeaderTexture;
+            _panelHeaderStyle.normal.background = _panelHeaderGradientTexture;
 
             _panelTitleStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 16,
+                fontSize = 22,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleLeft,
             };
             _panelTitleStyle.normal.textColor = PanelTextColor;
 
+            _panelSubtitleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13,
+                alignment = TextAnchor.UpperLeft,
+                padding = new RectOffset(1, 0, 0, 0),
+            };
+            _panelSubtitleStyle.normal.textColor = PanelMutedTextColor;
+
             _panelStatusStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 12,
+                fontSize = 13,
                 alignment = TextAnchor.MiddleRight,
             };
             _panelStatusStyle.normal.textColor = PanelMutedTextColor;
 
-            _panelTabStyle = CreatePanelTabStyle(_panelTabTexture, PanelTextColor);
-            _panelTabActiveStyle = CreatePanelTabStyle(_panelTabActiveTexture, Color.white);
+            _panelStatusPillStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13,
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(14, 14, 7, 7),
+                border = new RectOffset(10, 10, 10, 10),
+            };
+            _panelStatusPillStyle.normal.background = _panelStatusPillTexture;
+            _panelStatusPillStyle.normal.textColor = PanelAccentColor;
+
+            _panelTabStyle = CreatePanelTabStyle(_panelTabTexture, _panelTabHoverTexture, PanelMutedTextColor, controlRadius);
+            _panelTabActiveStyle = CreatePanelTabStyle(_panelTabActiveTexture, _panelTabActiveTexture, PanelTextColor, controlRadius);
 
             _panelContentStyle = new GUIStyle
             {
-                padding = new RectOffset(4, 12, 8, 8),
+                padding = new RectOffset(12, 12, 10, 10),
             };
 
             _panelResizeHandleStyle = new GUIStyle(GUI.skin.label)
             {
                 alignment = TextAnchor.LowerRight,
-                fontSize = 13,
+                fontSize = 12,
                 fontStyle = FontStyle.Bold,
-                padding = new RectOffset(0, 3, 0, 1),
+                padding = new RectOffset(0, 6, 0, 4),
             };
             _panelResizeHandleStyle.normal.textColor = PanelMutedTextColor;
 
@@ -5486,28 +5737,130 @@ namespace DD2SteamMultiplayerHost
             };
             _panelSeparatorStyle.normal.background = _panelSeparatorTexture;
 
+            _panelAccentLineStyle = new GUIStyle(GUI.skin.box)
+            {
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(0, 0, 0, 0),
+            };
+            _panelAccentLineStyle.normal.background = _panelAccentTexture;
+
+            _panelSectionHeaderStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 16,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                padding = new RectOffset(12, 12, 7, 7),
+                margin = new RectOffset(0, 0, 0, 0),
+                border = new RectOffset(6, 6, 6, 6),
+            };
+            _panelSectionHeaderStyle.normal.background = _panelSectionTexture;
+            _panelSectionHeaderStyle.normal.textColor = PanelTextColor;
+
+            _panelAccentButtonStyle = CreateRoundedButtonStyle(
+                new Color(0.18f, 0.30f, 0.48f, 1f),
+                new Color(0.24f, 0.40f, 0.62f, 1f),
+                new Color(0.14f, 0.24f, 0.40f, 1f),
+                new Color(0.82f, 0.90f, 1f, 1f),
+                Color.white,
+                new Color(0.70f, 0.82f, 0.96f, 1f),
+                controlRadius,
+                true);
+
+            _panelDangerButtonStyle = CreateRoundedButtonStyle(
+                new Color(0.42f, 0.16f, 0.16f, 1f),
+                new Color(0.54f, 0.22f, 0.22f, 1f),
+                new Color(0.32f, 0.12f, 0.12f, 1f),
+                new Color(1f, 0.82f, 0.82f, 1f),
+                Color.white,
+                new Color(0.95f, 0.70f, 0.70f, 1f),
+                controlRadius,
+                true);
+
+            _panelSuccessButtonStyle = CreateRoundedButtonStyle(
+                new Color(0.14f, 0.34f, 0.26f, 1f),
+                new Color(0.18f, 0.46f, 0.34f, 1f),
+                new Color(0.10f, 0.28f, 0.20f, 1f),
+                new Color(0.78f, 0.96f, 0.86f, 1f),
+                Color.white,
+                new Color(0.62f, 0.88f, 0.74f, 1f),
+                controlRadius,
+                true);
+
+            _panelSubButtonStyle = CreateRoundedButtonStyle(
+                new Color(0.15f, 0.17f, 0.22f, 1f),
+                new Color(0.20f, 0.24f, 0.32f, 1f),
+                new Color(0.12f, 0.14f, 0.18f, 1f),
+                PanelMutedTextColor,
+                PanelTextColor,
+                PanelMutedTextColor,
+                controlRadius,
+                false);
+
             _panelStylesReady = true;
         }
 
-        private static GUIStyle CreatePanelTabStyle(Texture2D background, Color textColor)
+        private GUIStyle CreateRoundedButtonStyle(
+            Color normalBg,
+            Color hoverBg,
+            Color activeBg,
+            Color normalText,
+            Color hoverText,
+            Color activeText,
+            int radius,
+            bool emphasize)
+        {
+            Color border = emphasize
+                ? new Color(PanelAccentColor.r, PanelAccentColor.g, PanelAccentColor.b, 0.85f)
+                : new Color(0.40f, 0.32f, 0.22f, 0.70f);
+            GUIStyle style = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = emphasize ? 16 : 15,
+                fontStyle = emphasize ? FontStyle.Bold : FontStyle.Normal,
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(12, 12, 6, 6),
+                border = new RectOffset(radius, radius, radius, radius),
+            };
+            style.normal.background = OwnPanelTexture(CreateRoundedRectTexture(normalBg, border, 32, radius, emphasize ? 2 : 1));
+            style.hover.background = OwnPanelTexture(CreateRoundedRectTexture(hoverBg, PanelAccentColor, 32, radius, 2));
+            style.active.background = OwnPanelTexture(CreateRoundedRectTexture(activeBg, border, 32, radius, 1));
+            style.focused.background = style.normal.background;
+            style.normal.textColor = normalText;
+            style.hover.textColor = hoverText;
+            style.active.textColor = activeText;
+            style.focused.textColor = normalText;
+            return style;
+        }
+
+        private static GUIStyle CreatePanelTabStyle(Texture2D background, Texture2D hover, Color textColor, int radius)
         {
             GUIStyle style = new GUIStyle(GUI.skin.button)
             {
-                fontSize = 13,
+                fontSize = 16,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
-                margin = new RectOffset(2, 2, 0, 0),
-                padding = new RectOffset(8, 8, 4, 4),
+                margin = new RectOffset(3, 3, 0, 0),
+                padding = new RectOffset(12, 12, 10, 10),
+                border = new RectOffset(radius, radius, radius, radius),
             };
             style.normal.background = background;
-            style.hover.background = background;
+            style.hover.background = hover ?? background;
             style.active.background = background;
             style.focused.background = background;
             style.normal.textColor = textColor;
-            style.hover.textColor = Color.white;
-            style.active.textColor = Color.white;
+            style.hover.textColor = PanelTextColor;
+            style.active.textColor = PanelTextColor;
             style.focused.textColor = textColor;
             return style;
+        }
+
+        private Texture2D OwnPanelTexture(Texture2D texture)
+        {
+            if (texture != null)
+            {
+                _panelOwnedTextures.Add(texture);
+            }
+
+            return texture;
         }
 
         private static Texture2D CreatePanelTexture(Color color)
@@ -5515,20 +5868,122 @@ namespace DD2SteamMultiplayerHost
             Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
             {
                 hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
             };
             texture.SetPixel(0, 0, color);
-            texture.Apply();
+            texture.Apply(false, true);
             return texture;
+        }
+
+        private static Texture2D CreateGradientTexture(Color top, Color bottom)
+        {
+            const int height = 64;
+            Texture2D texture = new Texture2D(1, height, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+            };
+            for (int y = 0; y < height; y++)
+            {
+                float t = (float)y / (height - 1);
+                // Unity textures are bottom-up; keep visual top->bottom as provided.
+                Color c = Color.Lerp(bottom, top, t);
+                texture.SetPixel(0, y, c);
+            }
+
+            texture.Apply(false, true);
+            return texture;
+        }
+
+        private static Texture2D CreateRoundedRectTexture(Color fill, Color border, int size, int radius, int borderWidth)
+        {
+            size = Mathf.Max(size, radius * 2 + 2);
+            radius = Mathf.Clamp(radius, 0, size / 2);
+            borderWidth = Mathf.Max(0, borderWidth);
+
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+            };
+
+            Color clear = new Color(0f, 0f, 0f, 0f);
+            float half = size * 0.5f;
+            float inner = half - 0.5f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float px = x + 0.5f - half;
+                    float py = y + 0.5f - half;
+                    float distance = SignedDistanceRoundedBox(px, py, inner, inner, radius);
+                    if (distance > 0.5f)
+                    {
+                        texture.SetPixel(x, y, clear);
+                    }
+                    else if (borderWidth > 0 && distance > -borderWidth)
+                    {
+                        float t = Mathf.Clamp01(0.5f - distance);
+                        Color c = border;
+                        c.a *= t;
+                        texture.SetPixel(x, y, c);
+                    }
+                    else
+                    {
+                        float edge = Mathf.Clamp01(0.5f - distance);
+                        Color c = fill;
+                        c.a *= edge;
+                        texture.SetPixel(x, y, c);
+                    }
+                }
+            }
+
+            texture.Apply(false, true);
+            return texture;
+        }
+
+        private static float SignedDistanceRoundedBox(float px, float py, float halfW, float halfH, float radius)
+        {
+            float qx = Mathf.Abs(px) - halfW + radius;
+            float qy = Mathf.Abs(py) - halfH + radius;
+            float outsideX = Mathf.Max(qx, 0f);
+            float outsideY = Mathf.Max(qy, 0f);
+            float outside = Mathf.Sqrt(outsideX * outsideX + outsideY * outsideY);
+            float inside = Mathf.Min(Mathf.Max(qx, qy), 0f);
+            return outside + inside - radius;
         }
 
         private void DestroyPanelTextures()
         {
-            DestroyPanelTexture(ref _panelWindowTexture);
-            DestroyPanelTexture(ref _panelBodyTexture);
-            DestroyPanelTexture(ref _panelHeaderTexture);
-            DestroyPanelTexture(ref _panelTabTexture);
-            DestroyPanelTexture(ref _panelTabActiveTexture);
-            DestroyPanelTexture(ref _panelSeparatorTexture);
+            for (int i = 0; i < _panelOwnedTextures.Count; i++)
+            {
+                Texture2D texture = _panelOwnedTextures[i];
+                if (texture != null)
+                {
+                    Destroy(texture);
+                }
+            }
+
+            _panelOwnedTextures.Clear();
+            _panelWindowTexture = null;
+            _panelBodyTexture = null;
+            _panelHeaderTexture = null;
+            _panelTabTexture = null;
+            _panelTabActiveTexture = null;
+            _panelTabHoverTexture = null;
+            _panelSeparatorTexture = null;
+            _panelAccentTexture = null;
+            _panelHeaderGradientTexture = null;
+            _panelSectionTexture = null;
+            _panelBeastSectionTexture = null;
+            _panelHumanSectionTexture = null;
+            _panelBannerIdleTexture = null;
+            _panelBannerPendingTexture = null;
+            _panelBannerErrorTexture = null;
+            _panelStatusPillTexture = null;
             _panelStylesReady = false;
         }
 
@@ -5577,16 +6032,16 @@ namespace DD2SteamMultiplayerHost
         {
             bool oldEnabled = GUI.enabled;
             GUILayout.Space(8f);
-            GUILayout.BeginHorizontal(GUILayout.Width(90f));
+            GUILayout.BeginHorizontal(GUILayout.Width(96f));
             GUI.enabled = oldEnabled && _uiLanguage != UiLanguage.English;
-            if (GUILayout.Button("EN", GUILayout.Width(40f), GUILayout.Height(24f)))
+            if (GUILayout.Button("EN", _panelSubButtonStyle, GUILayout.Width(52f), GUILayout.Height(34f)))
             {
                 _uiLanguage = UiLanguage.English;
                 ClearArenaTextCaches();
             }
 
             GUI.enabled = oldEnabled && _uiLanguage != UiLanguage.Chinese;
-            if (GUILayout.Button("中", GUILayout.Width(40f), GUILayout.Height(24f)))
+            if (GUILayout.Button("中", _panelSubButtonStyle, GUILayout.Width(52f), GUILayout.Height(34f)))
             {
                 _uiLanguage = UiLanguage.Chinese;
                 ClearArenaTextCaches();
@@ -5594,6 +6049,18 @@ namespace DD2SteamMultiplayerHost
 
             GUI.enabled = oldEnabled;
             GUILayout.EndHorizontal();
+        }
+
+        private void DrawPanelHeaderStatusPill()
+        {
+            string status = GetPanelHeaderStatus();
+            if (string.IsNullOrWhiteSpace(status))
+            {
+                return;
+            }
+
+            GUILayout.Label(TrimPanelText(status, IsChineseUi ? 28 : 36), _panelStatusPillStyle, GUILayout.Height(34f));
+            GUILayout.Space(8f);
         }
 
         private void ClearArenaTextCaches()
@@ -5631,21 +6098,44 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawPanelTabs()
         {
-            GUILayout.BeginHorizontal(GUILayout.Height(38f));
-            DrawPanelTabButton(PanelTab.Home, Ui("Home", "主页"), Ui("room, roster, current status", "房间、成员和当前状态"));
-            DrawPanelTabButton(PanelTab.Lobby, Ui("Lobby", "房间"), Ui("Steam lobby and hero slots", "Steam 房间和英雄槽位"));
-            DrawPanelTabButton(PanelTab.Arena, Ui("Arena", "竞技场"), Ui("custom battle and PVP setup", "自定义战斗和 PVP 设置"));
-            DrawPanelTabButton(PanelTab.Tools, Ui("Tools", "工具"), Ui("diagnostics", "诊断工具"));
-            GUILayout.EndHorizontal();
+            Rect bar = GUILayoutUtility.GetRect(0f, 54f, GUILayout.ExpandWidth(true), GUILayout.Height(54f));
+            if (Event.current.type == EventType.Repaint)
+            {
+                DrawSolidRect(bar, PanelTabBarColor);
+                DrawSolidRect(new Rect(bar.x, bar.yMax - 1f, bar.width, 1f), new Color(PanelBorderColor.r, PanelBorderColor.g, PanelBorderColor.b, 0.45f));
+            }
+
+            float tabWidth = Mathf.Max(108f, (bar.width - 28f) / 4f);
+            float x = bar.x + 12f;
+            float y = bar.y + 8f;
+            DrawPanelTabButtonAt(new Rect(x, y, tabWidth, 38f), PanelTab.Home, Ui("Home", "主页"), Ui("room, roster, current status", "房间、成员和当前状态"));
+            x += tabWidth + 4f;
+            DrawPanelTabButtonAt(new Rect(x, y, tabWidth, 38f), PanelTab.Lobby, Ui("Lobby", "房间"), Ui("Steam lobby and hero slots", "Steam 房间和英雄槽位"));
+            x += tabWidth + 4f;
+            DrawPanelTabButtonAt(new Rect(x, y, tabWidth, 38f), PanelTab.Arena, Ui("Arena", "竞技场"), Ui("custom battle and PVP setup", "自定义战斗和 PVP 设置"));
+            x += tabWidth + 4f;
+            DrawPanelTabButtonAt(new Rect(x, y, tabWidth, 38f), PanelTab.Tools, Ui("Tools", "工具"), Ui("diagnostics", "诊断工具"));
+            GUILayout.Space(6f);
         }
 
         private void DrawPanelTabButton(PanelTab tab, string label, string tooltip)
         {
             GUIStyle style = _panelTab == tab ? _panelTabActiveStyle : _panelTabStyle;
             Rect rect = GUILayoutUtility.GetRect(120f, 34f, style, GUILayout.Height(34f), GUILayout.ExpandWidth(true));
+            DrawPanelTabButtonAt(rect, tab, label, tooltip);
+        }
+
+        private void DrawPanelTabButtonAt(Rect rect, PanelTab tab, string label, string tooltip)
+        {
+            GUIStyle style = _panelTab == tab ? _panelTabActiveStyle : _panelTabStyle;
             if (GUI.Button(rect, label, style))
             {
                 SetPanelTab(tab);
+            }
+
+            if (_panelTab == tab && Event.current.type == EventType.Repaint)
+            {
+                DrawSolidRect(new Rect(rect.x + 10f, rect.yMax - 3f, rect.width - 20f, 3f), PanelAccentColor);
             }
 
             RegisterTooltip(rect, label, tooltip);
@@ -5721,9 +6211,35 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawPanelSeparator()
         {
-            GUILayout.Space(12f);
-            GUILayout.Box(GUIContent.none, _panelSeparatorStyle, GUILayout.Height(1f), GUILayout.ExpandWidth(true));
-            GUILayout.Space(12f);
+            GUILayout.Space(10f);
+            Rect line = GUILayoutUtility.GetRect(0f, 1f, GUILayout.ExpandWidth(true), GUILayout.Height(1f));
+            if (Event.current.type == EventType.Repaint)
+            {
+                DrawSolidRect(line, new Color(PanelBorderColor.r, PanelBorderColor.g, PanelBorderColor.b, 0.35f));
+            }
+
+            GUILayout.Space(10f);
+        }
+
+        private void DrawSectionHeader(string label)
+        {
+            GUILayout.Space(10f);
+            GUILayout.BeginHorizontal(GUILayout.Height(28f));
+            Rect accent = GUILayoutUtility.GetRect(3f, 22f, GUILayout.Width(3f), GUILayout.Height(22f));
+            if (Event.current.type == EventType.Repaint)
+            {
+                DrawSolidRect(accent, PanelAccentColor);
+            }
+
+            GUILayout.Space(6f);
+            GUILayout.Label(label, _panelSectionHeaderStyle, GUILayout.ExpandWidth(true), GUILayout.Height(28f));
+            GUILayout.EndHorizontal();
+            GUILayout.Space(4f);
+        }
+
+        private void DrawAccentSeparator()
+        {
+            GUILayout.Space(4f);
         }
 
         private void DrawPanelResizeHandle()
@@ -5783,7 +6299,8 @@ namespace DD2SteamMultiplayerHost
             ref bool resizing,
             ref bool resizeChangedThisFrame,
             float minWidth,
-            float minHeight)
+            float minHeight,
+            float scale = 1f)
         {
             Rect handleRect = new Rect(
                 Mathf.Max(0f, windowRect.width - PanelResizeHandleSize - 2f),
@@ -5813,8 +6330,9 @@ namespace DD2SteamMultiplayerHost
 
             if (evt.type == EventType.MouseDrag || evt.type == EventType.Repaint)
             {
-                float maxWidth = Mathf.Max(minWidth, Screen.width - 20f);
-                float maxHeight = Mathf.Max(minHeight, Screen.height - 20f);
+                scale = Mathf.Max(0.001f, scale);
+                float maxWidth = Mathf.Max(minWidth, (Screen.width - 20f) / scale);
+                float maxHeight = Mathf.Max(minHeight, (Screen.height - 20f) / scale);
                 windowRect.width = Mathf.Clamp(evt.mousePosition.x + 8f, Mathf.Min(minWidth, maxWidth), maxWidth);
                 windowRect.height = Mathf.Clamp(evt.mousePosition.y + 8f, Mathf.Min(minHeight, maxHeight), maxHeight);
                 resizeChangedThisFrame = true;
@@ -5835,33 +6353,33 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawHomePanelSection()
         {
-            GUILayout.Label(Ui("Control Center", "控制中心"));
-            DrawWrappedLabel(GetLobbyPanelStatus() + " | " + GetPvpPanelStatus() + " | " + GetVersionPanelStatus());
+            DrawSectionHeader(Ui("Control Center", "控制中心"));
+            DrawWrappedLabel(GetLobbyPanelStatus() + " · " + GetPvpPanelStatus() + " · " + GetVersionPanelStatus());
             DrawWrappedLabel(Ui(
-                "F7 is kept for lobby, assignment, Arena/PVP setup, and diagnostics. Gameplay mirror and operation panels remain in F6.",
-                "F7 只保留房间、分配、竞技场/PVP 设置和诊断信息。战斗、奖励、路线、酒馆、商店、马车等实际镜像操作仍在 F6。"));
+                "Lobby, slots, Arena/PVP and diagnostics live here. Use F6 for the gameplay mirror.",
+                "这里管理房间、槽位、竞技场/PVP 与诊断。游玩镜像请用 F6。"));
 
             GUILayout.BeginHorizontal();
             bool hasLobby = _lobbyClient != null && _lobbyClient.IsInLobby;
             GUI.enabled = _lobbyClient != null && !hasLobby;
-            if (GUILayout.Button(Ui("Host 4", "开 4 人房"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Host 4", "开 4 人房"), _panelAccentButtonStyle, GUILayout.Height(34f)))
             {
                 _lobbyClient.CreateLobby(4);
             }
 
             GUI.enabled = _lobbyClient != null && hasLobby;
-            if (GUILayout.Button(Ui("Invite", "邀请"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Invite", "邀请"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 _lobbyClient.OpenInviteDialog();
             }
 
-            if (GUILayout.Button(Ui("Leave", "离开"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Leave", "离开"), _panelDangerButtonStyle, GUILayout.Height(34f)))
             {
                 _lobbyClient.LeaveLobby(_messageTransport);
             }
 
             GUI.enabled = _session != null && hasLobby;
-            if (GUILayout.Button(Ui("Resync State", "重新同步"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Resync State", "重新同步"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 _session.RequestFullState("panel-home");
             }
@@ -5881,9 +6399,9 @@ namespace DD2SteamMultiplayerHost
             DrawHomeVoteSummary();
         }
 
-        private void DrawChoiceOverrulePanelSection()
-        {
-            GUILayout.Label(Ui("Infighting Overrides", "内斗强制选择"));
+private void DrawChoiceOverrulePanelSection()
+{
+DrawSectionHeader(Ui("Infighting Overrides", "内斗强制选择"));
             if (_session == null || _lobbyClient == null || !_lobbyClient.IsInLobby)
             {
                 DrawWrappedLabel(Ui("No active lobby.", "当前没有房间。"));
@@ -5936,9 +6454,9 @@ namespace DD2SteamMultiplayerHost
             GUILayout.EndHorizontal();
         }
 
-        private void DrawHomeLobbyRosterSummary()
-        {
-            GUILayout.Label(Ui("Lobby Members", "房间成员"));
+private void DrawHomeLobbyRosterSummary()
+{
+DrawSectionHeader(Ui("Lobby Members", "房间成员"));
             if (_lobbyClient == null || !_lobbyClient.IsInLobby)
             {
                 DrawWrappedLabel(Ui(
@@ -6046,9 +6564,9 @@ namespace DD2SteamMultiplayerHost
             return string.Join(" | ", slots.ToArray());
         }
 
-        private void DrawHomeHostSummary()
-        {
-            GUILayout.Label(Ui("Host State", "主机状态"));
+private void DrawHomeHostSummary()
+{
+DrawSectionHeader(Ui("Host State", "主机状态"));
 
             ExpeditionOverviewSnapshotPayload overview;
             if (_session == null || !_session.TryGetLatestExpeditionOverviewSnapshot(out overview))
@@ -6158,7 +6676,7 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
-            GUILayout.Label(Ui("Active Host Screens", "当前主机界面"));
+            DrawSectionHeader(Ui("Active Host Screens", "当前主机界面"));
             bool any = false;
 
             TurnPromptPayload prompt = null;
@@ -8032,7 +8550,7 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawHomeVoteSummary()
         {
-            GUILayout.Label(Ui("Active Votes", "当前投票"));
+            DrawSectionHeader(Ui("Active Votes", "当前投票"));
             bool any = false;
             any |= DrawHomeVoteSummaryLine(MultiplayerSession.VoteKeyMainMenu, "Main Menu");
             any |= DrawHomeVoteSummaryLine(MultiplayerSession.VoteKeyHeroReady, "Hero Ready");
@@ -8097,23 +8615,23 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawLobbyPanelSection()
         {
-            GUILayout.Label(Ui("Lobby", "房间"));
+            DrawSectionHeader(Ui("Lobby", "房间"));
             GUILayout.Label(GetLobbyPanelStatus());
             GUILayout.Label(GetPvpPanelStatus());
             DrawWrappedLabel(GetVersionPanelStatus());
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Ui("Host 4", "开 4 人房"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Host 4", "开 4 人房"), _panelAccentButtonStyle, GUILayout.Height(34f)))
             {
                 _lobbyClient.CreateLobby(4);
             }
 
-            if (GUILayout.Button(Ui("Invite", "邀请"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Invite", "邀请"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 _lobbyClient.OpenInviteDialog();
             }
 
-            if (GUILayout.Button(Ui("Leave", "离开"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Leave", "离开"), _panelDangerButtonStyle, GUILayout.Height(34f)))
             {
                 _lobbyClient.LeaveLobby(_messageTransport);
             }
@@ -8122,7 +8640,7 @@ namespace DD2SteamMultiplayerHost
 
             GUILayout.BeginHorizontal();
             _panelJoinLobbyId = GUILayout.TextField(_panelJoinLobbyId ?? string.Empty);
-            if (GUILayout.Button(Ui("Join", "加入"), GUILayout.Width(80f)))
+            if (GUILayout.Button(Ui("Join", "加入"), _panelSubButtonStyle, GUILayout.Width(80f)))
             {
                 TryJoinFromPanel();
             }
@@ -8130,9 +8648,9 @@ namespace DD2SteamMultiplayerHost
             GUILayout.EndHorizontal();
         }
 
-        private void DrawSlotPanelSection()
-        {
-            GUILayout.Label(Ui("Hero Slots", "英雄槽位"));
+private void DrawSlotPanelSection()
+{
+DrawSectionHeader(Ui("Hero Slots", "英雄槽位"));
 
             for (int slot = 1; slot <= 4; slot++)
             {
@@ -8156,12 +8674,12 @@ namespace DD2SteamMultiplayerHost
             }
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Ui("Auto Fill", "自动填空位"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Auto Fill", "自动填空位"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 _session.AutoAssignHeroSlots(false);
             }
 
-            if (GUILayout.Button(Ui("Auto Replace", "重新分配"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Auto Replace", "重新分配"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 _session.AutoAssignHeroSlots(true);
             }
@@ -8176,7 +8694,7 @@ namespace DD2SteamMultiplayerHost
                 GUILayout.Label(FormatLobbyMember(member), GUILayout.Width(220f));
                 for (int slot = 1; slot <= 4; slot++)
                 {
-                    if (GUILayout.Button(slot.ToString(), GUILayout.Width(42f)))
+                    if (GUILayout.Button(slot.ToString(), _panelSubButtonStyle, GUILayout.Width(48f), GUILayout.Height(32f)))
                     {
                         _session.AssignHeroSlot(slot, member.m_SteamID.ToString());
                     }
@@ -8184,11 +8702,95 @@ namespace DD2SteamMultiplayerHost
 
                 GUILayout.EndHorizontal();
             }
+
+            DrawCoopHeroControlBindingPanel();
+        }
+
+        private void DrawCoopHeroControlBindingPanel()
+        {
+            if (!TryGetConfiguredCoopHeroes(out List<CoopHeroBindingCandidate> heroes) || heroes.Count == 0)
+            {
+                return;
+            }
+
+            DrawPanelSeparator();
+            DrawSectionHeader(Ui("Co-op Hero Control", "合作英雄控制"));
+            DrawWrappedLabel(Ui(
+                "Optional for cooperative PVE. Bind control to hero identity so moving ranks does not swap players. Unbound heroes are not remotely controllable while enabled.",
+                "仅用于合作 PVE。按英雄身份锁定控制权，换位后不会换人；启用后未绑定英雄不会接受远程控制。"));
+
+            bool excluded = IsHeroVsHeroControlBindingExcluded();
+            if (excluded)
+            {
+                DrawWrappedLabel(Ui(
+                    "Unavailable during hero-vs-hero or expedition enemy-pilot PVP.",
+                    "英雄对战或远征敌方操作员 PVP 中不可用。"));
+                return;
+            }
+
+            bool oldEnabled = GUI.enabled;
+            GUI.enabled = oldEnabled && _lobbyClient.IsHost && GameModeMgr.CurrentMode != GameModeType.COMBAT;
+            bool nextEnabled = GUILayout.Toggle(
+                _bindCoopControlsToHeroes,
+                Ui("Bind control to configured heroes", "按已配置英雄锁定控制权"));
+            if (nextEnabled != _bindCoopControlsToHeroes)
+            {
+                _bindCoopControlsToHeroes = nextEnabled;
+                if (nextEnabled)
+                {
+                    RebuildConfiguredCoopHeroControlSlots(heroes);
+                }
+                else
+                {
+                    _coopHeroControlSlots.Clear();
+                }
+                ResetAutoTurnMemory();
+            }
+            else if (_bindCoopControlsToHeroes)
+            {
+                SyncConfiguredCoopHeroControlSlots(heroes);
+            }
+
+            GUI.enabled = oldEnabled && _lobbyClient.IsHost && _bindCoopControlsToHeroes && GameModeMgr.CurrentMode != GameModeType.COMBAT;
+            for (int i = 0; i < heroes.Count; i++)
+            {
+                CoopHeroBindingCandidate hero = heroes[i];
+                int controlSlot;
+                bool mapped = _coopHeroControlSlots.TryGetValue(hero.ActorGuid, out controlSlot);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("S" + hero.ConfigSlot + " " + hero.DisplayName, GUILayout.Width(220f));
+                GUILayout.Label(mapped ? (Ui("control S", "控制槽 S") + controlSlot) : Ui("[unbound]", "[未绑定]"), GUILayout.Width(105f));
+                if (GUILayout.Button(Ui("Unbind", "不绑定"), _panelSubButtonStyle, GUILayout.Width(82f), GUILayout.Height(30f)))
+                {
+                    _coopHeroControlSlots.Remove(hero.ActorGuid);
+                }
+
+                for (int candidateSlot = 1; candidateSlot <= 4; candidateSlot++)
+                {
+                    HeroSlotAssignmentPayload candidateOwner;
+                    if (!_session.TryGetHeroSlotOwner(candidateSlot, out candidateOwner) || candidateOwner == null)
+                    {
+                        continue;
+                    }
+
+                    if (GUILayout.Button(
+                        candidateOwner.Name + " S" + candidateSlot,
+                        mapped && controlSlot == candidateSlot ? _panelAccentButtonStyle : _panelSubButtonStyle,
+                        GUILayout.MinWidth(88f),
+                        GUILayout.Height(30f)))
+                    {
+                        _coopHeroControlSlots[hero.ActorGuid] = candidateSlot;
+                    }
+                }
+
+                GUILayout.EndHorizontal();
+            }
+            GUI.enabled = oldEnabled;
         }
 
         private void DrawPvpPanelSection()
-        {
-            GUILayout.Label(Ui("PVP Enemy Pilot", "PVP 敌方操作者"));
+{
+DrawSectionHeader(Ui("PVP Enemy Pilot", "PVP 敌方操作者"));
             DrawWrappedLabel(Ui(
                 "Host can assign one lobby member to the enemy side. That player waits outside hero/loadout sync and only controls enemy turns during combat.",
                 "房主可以指定一名房间成员控制敌方。该玩家不接收英雄和配装同步，只在战斗中的敌方回合操作。"));
@@ -8224,7 +8826,7 @@ namespace DD2SteamMultiplayerHost
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(Ui("Pick an enemy pilot from the member list below.", "从下方成员列表选择敌方操作者。"));
-            if (GUILayout.Button(Ui("Disable", "关闭"), GUILayout.Width(88f), GUILayout.Height(26f)))
+            if (GUILayout.Button(Ui("Disable", "关闭"), _panelDangerButtonStyle, GUILayout.Width(100f), GUILayout.Height(34f)))
             {
                 _session.SetPvpEnemyPilot(false, string.Empty);
             }
@@ -8237,7 +8839,7 @@ namespace DD2SteamMultiplayerHost
                 CSteamID member = members[i];
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(FormatLobbyMember(member), GUILayout.Width(220f));
-                if (GUILayout.Button(Ui("Enemy Pilot", "设为敌方"), GUILayout.Width(112f), GUILayout.Height(24f)))
+                if (GUILayout.Button(Ui("Enemy Pilot", "设为敌方"), _panelAccentButtonStyle, GUILayout.Width(128f), GUILayout.Height(32f)))
                 {
                     _session.SetPvpEnemyPilot(true, member.m_SteamID.ToString());
                 }
@@ -8246,9 +8848,187 @@ namespace DD2SteamMultiplayerHost
             }
         }
 
+        private bool TryGetConfiguredCoopHeroes(out List<CoopHeroBindingCandidate> heroes)
+        {
+            heroes = new List<CoopHeroBindingCandidate>();
+            if (_session == null)
+            {
+                return false;
+            }
+
+            HeroSelectSnapshotPayload select;
+            if (_session.TryGetLatestHeroSelectSnapshot(out select) && select != null && select.IsActive && select.Slots != null)
+            {
+                foreach (HeroSelectSlotPayload slot in select.Slots
+                    .Where(slot => slot != null && !string.IsNullOrWhiteSpace(slot.ActorGuid))
+                    .OrderBy(slot => slot.HeroSlot))
+                {
+                    if (uint.TryParse(slot.ActorGuid, out uint actorGuid) && actorGuid != 0U)
+                    {
+                        heroes.Add(new CoopHeroBindingCandidate
+                        {
+                            ConfigSlot = slot.HeroSlot,
+                            ActorGuid = actorGuid,
+                            DisplayName = FirstPresent(slot.ActorName, slot.ActorDataId, slot.ActorGuid),
+                        });
+                    }
+                }
+            }
+
+            if (heroes.Count == 0)
+            {
+                HeroLoadoutSnapshotPayload loadout;
+                if (_session.TryGetLatestHeroLoadoutSnapshot(out loadout) && loadout != null && loadout.Actors != null)
+                {
+                    foreach (HeroLoadoutActorPayload actor in loadout.Actors
+                        .Where(actor => actor != null && !string.IsNullOrWhiteSpace(actor.ActorGuid))
+                        .OrderBy(actor => actor.HeroSlot))
+                    {
+                        if (uint.TryParse(actor.ActorGuid, out uint actorGuid) && actorGuid != 0U)
+                        {
+                            heroes.Add(new CoopHeroBindingCandidate
+                            {
+                                ConfigSlot = actor.HeroSlot,
+                                ActorGuid = actorGuid,
+                                DisplayName = FirstPresent(actor.ActorName, actor.ActorDataId, actor.ActorGuid),
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (heroes.Count == 0)
+            {
+                ExpeditionOverviewSnapshotPayload overview;
+                if (_session.TryGetLatestExpeditionOverviewSnapshot(out overview) && overview != null && overview.Heroes != null)
+                {
+                    foreach (ExpeditionHeroPayload hero in overview.Heroes
+                        .Where(hero => hero != null && !string.IsNullOrWhiteSpace(hero.ActorGuid))
+                        .OrderBy(hero => hero.HeroSlot))
+                    {
+                        if (uint.TryParse(hero.ActorGuid, out uint actorGuid) && actorGuid != 0U)
+                        {
+                            heroes.Add(new CoopHeroBindingCandidate
+                            {
+                                ConfigSlot = hero.HeroSlot,
+                                ActorGuid = actorGuid,
+                                DisplayName = FirstPresent(hero.ActorName, hero.ActorDataId, hero.ActorGuid),
+                            });
+                        }
+                    }
+                }
+            }
+
+            heroes = heroes
+                .Where(hero => hero.ConfigSlot >= 1 && hero.ConfigSlot <= 4)
+                .GroupBy(hero => hero.ActorGuid)
+                .Select(group => group.First())
+                .OrderBy(hero => hero.ConfigSlot)
+                .ToList();
+            return heroes.Count > 0;
+        }
+
+        private void SyncConfiguredCoopHeroControlSlots(IList<CoopHeroBindingCandidate> heroes)
+        {
+            var currentGuids = new HashSet<uint>((heroes ?? Array.Empty<CoopHeroBindingCandidate>()).Select(hero => hero.ActorGuid));
+            foreach (uint actorGuid in _coopHeroControlSlots.Keys.Where(actorGuid => !currentGuids.Contains(actorGuid)).ToArray())
+            {
+                _coopHeroControlSlots.Remove(actorGuid);
+            }
+
+            if (heroes == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < heroes.Count; i++)
+            {
+                CoopHeroBindingCandidate hero = heroes[i];
+                if (!_coopHeroControlSlots.ContainsKey(hero.ActorGuid))
+                {
+                    _coopHeroControlSlots[hero.ActorGuid] = hero.ConfigSlot;
+                }
+            }
+        }
+
+        private void RebuildConfiguredCoopHeroControlSlots(IList<CoopHeroBindingCandidate> heroes)
+        {
+            _coopHeroControlSlots.Clear();
+            if (heroes == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < heroes.Count; i++)
+            {
+                CoopHeroBindingCandidate hero = heroes[i];
+                if (hero != null && hero.ActorGuid != 0U && hero.ConfigSlot >= 1 && hero.ConfigSlot <= 4)
+                {
+                    _coopHeroControlSlots[hero.ActorGuid] = hero.ConfigSlot;
+                }
+            }
+        }
+
+        private static string FirstPresent(params string[] values)
+        {
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(values[i]))
+                {
+                    return values[i];
+                }
+            }
+
+            return "[hero]";
+        }
+
+        private bool IsHeroVsHeroControlBindingExcluded()
+        {
+            PvpModeStatePayload state;
+            bool expeditionPvp = _session != null &&
+                _session.TryGetPvpModeState(out state) &&
+                state != null &&
+                state.Enabled;
+            return expeditionPvp || _arenaHeroVsHeroAtLaunch ||
+                (_arenaResultBypassArmed && HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots));
+        }
+
+        private bool TryResolveHeroTurnOwner(
+            CombatTurnInfo info,
+            out int controlSlot,
+            out HeroSlotAssignmentPayload owner,
+            out string reason)
+        {
+            controlSlot = info == null ? 0 : info.HeroSlot;
+            owner = null;
+            reason = string.Empty;
+            if (info == null || !info.IsHeroTeam || _session == null)
+            {
+                reason = "not a hero turn";
+                return false;
+            }
+
+            if (_bindCoopControlsToHeroes && !IsHeroVsHeroControlBindingExcluded())
+            {
+                if (!_coopHeroControlSlots.TryGetValue(info.ActorGuid, out controlSlot))
+                {
+                    reason = "actor " + info.ActorGuid + " has no configured hero binding";
+                    return false;
+                }
+            }
+
+            if (controlSlot < 1 || controlSlot > 4 || !_session.TryGetHeroSlotOwner(controlSlot, out owner) || owner == null)
+            {
+                reason = "control slot " + controlSlot + " is not assigned";
+                return false;
+            }
+
+            return true;
+        }
+
         private void DrawArenaPanelSection()
         {
-            GUILayout.Label(Ui("Arena", "竞技场"));
+            DrawSectionHeader(Ui("Arena", "竞技场"));
             DrawWrappedLabel(GetLobbyPanelStatus() + " | " + GetPvpPanelStatus());
 
             DrawPvpPanelSection();
@@ -8256,29 +9036,355 @@ namespace DD2SteamMultiplayerHost
             DrawArenaSetupPanelSection();
         }
 
+        private void DrawArenaStatusBanner()
+        {
+            string statusText = GetArenaStatusDisplayText();
+            bool isError = IsArenaStatusError(statusText);
+            bool isPending = IsArenaStatusPending(statusText);
+            bool isIdle = string.Equals(statusText, Ui("Idle", "空闲"), StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(_arenaStatus) ||
+                string.Equals(_arenaStatus, "Idle", StringComparison.Ordinal);
+
+            Color textColor = isError
+                ? new Color(1f, 0.78f, 0.72f, 1f)
+                : isPending
+                    ? new Color(0.98f, 0.90f, 0.68f, 1f)
+                    : PanelTextColor;
+
+            Texture2D bannerBg = isError
+                ? _panelBannerErrorTexture
+                : isPending
+                    ? _panelBannerPendingTexture
+                    : _panelBannerIdleTexture;
+
+            GUIStyle bannerStyle = new GUIStyle(GUI.skin.box)
+            {
+                fontSize = isError ? 14 : 13,
+                fontStyle = isError || isPending ? FontStyle.Bold : FontStyle.Normal,
+                alignment = TextAnchor.MiddleLeft,
+                padding = new RectOffset(12, 12, 10, 10),
+                margin = new RectOffset(0, 0, 2, 6),
+                border = new RectOffset(8, 8, 8, 8),
+            };
+            bannerStyle.normal.background = bannerBg;
+            bannerStyle.normal.textColor = textColor;
+            bannerStyle.wordWrap = true;
+
+            GUILayout.BeginVertical(bannerStyle, GUILayout.ExpandWidth(true));
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(
+                Ui("Launch status", "启动状态"),
+                CreateHudLabelStyle(15, FontStyle.Bold, isIdle ? PanelMutedTextColor : textColor, TextAnchor.MiddleLeft),
+                GUILayout.Width(IsChineseUi ? 88f : 110f));
+            GUILayout.Label(
+                statusText,
+                CreateHudLabelStyle(isError ? 16 : 15, isError || isPending ? FontStyle.Bold : FontStyle.Normal, textColor, TextAnchor.MiddleLeft),
+                GUILayout.ExpandWidth(true));
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(6f);
+            GUILayout.BeginHorizontal();
+            DrawArenaLaunchReadinessChips();
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
+        }
+
+        private void DrawArenaLaunchReadinessChips()
+        {
+            bool launchReady = IsArenaLaunchReady(out string launchReason);
+            DrawArenaStatusChip(
+                Ui("Launch", "启动"),
+                launchReady
+                    ? Ui("ready", "就绪")
+                    : TrimPanelText(LocalizeArenaLaunchReason(launchReason), IsChineseUi ? 28 : 36),
+                launchReady ? ArenaStatusChipKind.Ready : ArenaStatusChipKind.Blocked,
+                launchReady
+                    ? Ui("All launch gates passed.", "全部启动条件已满足。")
+                    : LocalizeArenaLaunchReason(launchReason));
+
+            GUILayout.Space(6f);
+
+            PvpModeStatePayload state = null;
+            bool hasEnemyPilot = _session != null &&
+                _session.TryGetPvpModeState(out state) &&
+                state != null &&
+                state.Enabled &&
+                state.EnemyControllerSteamId != 0UL;
+            string pilotDetail = hasEnemyPilot
+                ? TrimPanelText(
+                    string.IsNullOrWhiteSpace(state.EnemyControllerName)
+                        ? state.EnemyControllerSteamId.ToString()
+                        : state.EnemyControllerName,
+                    IsChineseUi ? 16 : 20)
+                : Ui("optional", "可选");
+            DrawArenaStatusChip(
+                Ui("Enemy pilot", "敌方操作者"),
+                pilotDetail,
+                hasEnemyPilot ? ArenaStatusChipKind.Ready : ArenaStatusChipKind.Optional,
+                hasEnemyPilot
+                    ? Ui("PVP enemy pilot assigned.", "已指定 PVP 敌方操作者。")
+                    : Ui(
+                        "Optional. Assign in the PVP section above when a guest should control the enemy side.",
+                        "可选。需要客机操控敌方时，在上方 PVP 区指定操作者。"));
+
+            GUILayout.Space(6f);
+
+            string presetActors = string.Empty;
+            bool hasPresetPlayers = TryGetArenaBattleConfiguration(_arenaBattleConfigId, out BattleConfigurationDefinition config, out _) &&
+                config != null &&
+                config.m_PlayerActors != null &&
+                config.m_PlayerActors.Count > 0;
+            if (hasPresetPlayers)
+            {
+                presetActors = JoinArenaIds(config.m_PlayerActors);
+            }
+
+            DrawArenaStatusChip(
+                Ui("Preset players", "预设玩家"),
+                hasPresetPlayers
+                    ? Ui("ignored", "已忽略")
+                    : Ui("none", "无"),
+                hasPresetPlayers ? ArenaStatusChipKind.Info : ArenaStatusChipKind.Ready,
+                hasPresetPlayers
+                    ? Ui(
+                        "This battle preset ships player actors, but Arena launch uses the Hero Setup draft instead: ",
+                        "该战斗预设带有官方玩家阵容，但竞技场启动会改用「英雄设置」草案：") + presetActors
+                    : Ui(
+                        "No preset player actors. Party comes from the Hero Setup draft.",
+                        "无预设玩家阵容，队伍来自「英雄设置」草案。"));
+        }
+
+        private void DrawArenaStatusChip(string label, string value, ArenaStatusChipKind kind, string tooltip)
+        {
+            Color background;
+            Color border;
+            Color labelColor;
+            Color valueColor;
+            string mark;
+            switch (kind)
+            {
+                case ArenaStatusChipKind.Ready:
+                    background = PanelChipReadyColor;
+                    border = new Color(0.42f, 0.68f, 0.42f, 0.95f);
+                    labelColor = new Color(0.78f, 0.92f, 0.74f, 1f);
+                    valueColor = new Color(0.90f, 0.96f, 0.86f, 1f);
+                    mark = "●";
+                    break;
+                case ArenaStatusChipKind.Blocked:
+                    background = PanelChipBlockedColor;
+                    border = new Color(0.82f, 0.42f, 0.30f, 0.95f);
+                    labelColor = new Color(1f, 0.80f, 0.72f, 1f);
+                    valueColor = new Color(1f, 0.90f, 0.84f, 1f);
+                    mark = "●";
+                    break;
+                case ArenaStatusChipKind.Optional:
+                    background = new Color(0.14f, 0.12f, 0.10f, 0.98f);
+                    border = new Color(0.40f, 0.34f, 0.26f, 0.90f);
+                    labelColor = PanelMutedTextColor;
+                    valueColor = PanelMutedTextColor;
+                    mark = "○";
+                    break;
+                default:
+                    background = new Color(0.24f, 0.18f, 0.08f, 0.98f);
+                    border = PanelAccentColor;
+                    labelColor = new Color(0.98f, 0.90f, 0.62f, 1f);
+                    valueColor = new Color(1f, 0.94f, 0.78f, 1f);
+                    mark = "!";
+                    break;
+            }
+
+            float width = IsChineseUi ? 210f : 230f;
+            Rect rect = GUILayoutUtility.GetRect(width, 60f, GUILayout.MinWidth(170f), GUILayout.Height(60f), GUILayout.ExpandWidth(true));
+            DrawSolidRect(rect, background);
+            DrawRectBorder(rect, border, 1f);
+            GUI.Label(
+                new Rect(rect.x + 10f, rect.y + 6f, rect.width - 18f, 22f),
+                mark + " " + label,
+                CreateHudLabelStyle(15, FontStyle.Bold, labelColor, TextAnchor.MiddleLeft));
+            GUI.Label(
+                new Rect(rect.x + 10f, rect.y + 30f, rect.width - 18f, 22f),
+                value ?? string.Empty,
+                CreateHudLabelStyle(15, FontStyle.Normal, valueColor, TextAnchor.MiddleLeft));
+            if (!string.IsNullOrWhiteSpace(tooltip))
+            {
+                RegisterTooltip(rect, label, tooltip);
+            }
+        }
+
+        private enum ArenaStatusChipKind
+        {
+            Ready,
+            Blocked,
+            Optional,
+            Info,
+        }
+
+        private static bool IsArenaStatusError(string statusText)
+        {
+            string raw = statusText ?? string.Empty;
+            return raw.StartsWith("Launch failed", StringComparison.Ordinal) ||
+                raw.StartsWith("Launch blocked", StringComparison.Ordinal) ||
+                raw.StartsWith("Launch timed out", StringComparison.Ordinal) ||
+                raw.StartsWith("启动失败", StringComparison.Ordinal) ||
+                raw.StartsWith("启动被阻止", StringComparison.Ordinal) ||
+                raw.StartsWith("启动超时", StringComparison.Ordinal);
+        }
+
+        private static bool IsArenaStatusPending(string statusText)
+        {
+            string raw = statusText ?? string.Empty;
+            return raw.StartsWith("Launch pending", StringComparison.Ordinal) ||
+                raw.StartsWith("Launching", StringComparison.Ordinal) ||
+                raw.StartsWith("启动等待", StringComparison.Ordinal) ||
+                raw.StartsWith("正在启动", StringComparison.Ordinal);
+        }
+
+        private string GetArenaStatusDisplayText()
+        {
+            if (string.IsNullOrWhiteSpace(_arenaStatus) || string.Equals(_arenaStatus, "Idle", StringComparison.Ordinal))
+            {
+                return Ui("Idle", "空闲");
+            }
+
+            return LocalizeArenaStatusMessage(_arenaStatus);
+        }
+
+        private string LocalizeArenaStatusMessage(string status)
+        {
+            if (string.IsNullOrWhiteSpace(status))
+            {
+                return Ui("Idle", "空闲");
+            }
+
+            if (status.StartsWith("Launch blocked: ", StringComparison.Ordinal))
+            {
+                return Ui("Launch blocked: ", "启动被阻止：") + LocalizeArenaLaunchReason(status.Substring("Launch blocked: ".Length));
+            }
+
+            if (status.StartsWith("Launch timed out: ", StringComparison.Ordinal))
+            {
+                return Ui("Launch timed out: ", "启动超时：") + LocalizeArenaLaunchReason(status.Substring("Launch timed out: ".Length));
+            }
+
+            if (status.StartsWith("Launch failed: ", StringComparison.Ordinal))
+            {
+                return Ui("Launch failed: ", "启动失败：") + status.Substring("Launch failed: ".Length);
+            }
+
+            if (string.Equals(status, "Launch is already pending.", StringComparison.Ordinal))
+            {
+                return Ui("Launch is already pending.", "启动已在等待中。");
+            }
+
+            if (string.Equals(status, "Launch pending; waiting for safe DD2 runtime state.", StringComparison.Ordinal))
+            {
+                return Ui("Launch pending; waiting for safe DD2 runtime state.", "启动等待中；等待 DD2 运行时进入安全状态。");
+            }
+
+            if (status.StartsWith("Launching combat: ", StringComparison.Ordinal))
+            {
+                return Ui("Launching combat: ", "正在启动战斗：") + status.Substring("Launching combat: ".Length);
+            }
+
+            if (string.Equals(status, "Draft validated and applied to current party.", StringComparison.Ordinal))
+            {
+                return Ui("Draft validated and applied to current party.", "草案已验证并应用到当前队伍。");
+            }
+
+            if (string.Equals(status, "Draft validated in memory. Current party differs, so it will be applied during launch.", StringComparison.Ordinal))
+            {
+                return Ui(
+                    "Draft validated in memory. Current party differs, so it will be applied during launch.",
+                    "草案已在内存中验证。当前队伍不一致，将在启动时应用。");
+            }
+
+            if (status.StartsWith("Draft validation blocked: ", StringComparison.Ordinal))
+            {
+                return Ui("Draft validation blocked: ", "草案验证被阻止：") + status.Substring("Draft validation blocked: ".Length);
+            }
+
+            return status;
+        }
+
+        private string LocalizeArenaLaunchReason(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason) || string.Equals(reason, "ready", StringComparison.OrdinalIgnoreCase))
+            {
+                return Ui("ready", "就绪");
+            }
+
+            if (string.Equals(reason, "start or continue a run first", StringComparison.Ordinal))
+            {
+                return Ui("start or continue a run first", "请先开始或继续一局冒险");
+            }
+
+            if (string.Equals(reason, "already in combat", StringComparison.Ordinal))
+            {
+                return Ui("already in combat", "已在战斗中");
+            }
+
+            if (string.Equals(reason, "game mode is changing", StringComparison.Ordinal))
+            {
+                return Ui("game mode is changing", "游戏模式切换中");
+            }
+
+            if (string.Equals(reason, "GameModeMgr is not ready", StringComparison.Ordinal))
+            {
+                return Ui("GameModeMgr is not ready", "GameModeMgr 未就绪");
+            }
+
+            if (string.Equals(reason, "game type has not started", StringComparison.Ordinal))
+            {
+                return Ui("game type has not started", "游戏类型尚未开始");
+            }
+
+            if (reason.StartsWith("hero draft is not ready: ", StringComparison.Ordinal))
+            {
+                return Ui("hero draft is not ready: ", "英雄草案未就绪：") + reason.Substring("hero draft is not ready: ".Length);
+            }
+
+            if (reason.StartsWith("enemy hero draft is not ready: ", StringComparison.Ordinal))
+            {
+                return Ui("enemy hero draft is not ready: ", "敌方英雄草案未就绪：") + reason.Substring("enemy hero draft is not ready: ".Length);
+            }
+
+            if (reason.StartsWith("battle sequence is not valid: ", StringComparison.Ordinal))
+            {
+                return Ui("battle sequence is not valid: ", "战斗序列无效：") + reason.Substring("battle sequence is not valid: ".Length);
+            }
+
+            if (reason.StartsWith("battle sequence is not launchable: ", StringComparison.Ordinal))
+            {
+                return Ui("battle sequence is not launchable: ", "战斗序列不可启动：") + reason.Substring("battle sequence is not launchable: ".Length);
+            }
+
+            if (reason.StartsWith("current mode is ", StringComparison.Ordinal))
+            {
+                return Ui("current mode is ", "当前模式为 ") + reason.Substring("current mode is ".Length);
+            }
+
+            return reason;
+        }
+
         private void DrawArenaSetupPanelSection()
         {
-            GUILayout.Label(Ui("Custom Battle Setup", "自定义战斗设置"));
-            DrawWrappedLabel(Ui("Status: ", "状态：") + _arenaStatus);
-
-            DrawWrappedLabel(Ui(
-                "Flow: host opens Browse to pick an official enemy preset, optionally queues waves/chains in that window, opens Hero Setup to edit the hero draft, then launches the draft. Enemy-side players are assigned above and should wait for combat turns.",
-                "流程：房主点“浏览”选择官方敌人预设，可在浏览窗口里加入单波或官方连战队列；再打开“英雄设置”调整英雄草案，最后启动草案。被分配到敌方的玩家等待战斗中的敌方回合即可。"));
+            DrawSectionHeader(Ui("Custom Battle Setup", "自定义战斗设置"));
+            DrawArenaStatusBanner();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(Ui("Battle", "战斗"), GUILayout.Width(64f));
             GUILayout.Label(TrimPanelText(string.IsNullOrWhiteSpace(_arenaBattleConfigId) ? "[none]" : _arenaBattleConfigId, 60), GUILayout.MinWidth(180f), GUILayout.ExpandWidth(true));
-            if (GUILayout.Button(Ui("Browse", "浏览"), GUILayout.Width(82f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Browse", "浏览"), _panelAccentButtonStyle, GUILayout.Width(100f), GUILayout.Height(34f)))
             {
                 OpenArenaBattlePresetBrowser();
             }
 
-            if (GUILayout.Button(Ui("Current", "当前"), GUILayout.Width(88f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Current", "当前"), _panelSubButtonStyle, GUILayout.Width(100f), GUILayout.Height(34f)))
             {
                 TryUseCurrentArenaBattleConfig();
             }
 
-            if (GUILayout.Button(Ui("Reset", "重置"), GUILayout.Width(72f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Reset", "重置"), _panelDangerButtonStyle, GUILayout.Width(88f), GUILayout.Height(34f)))
             {
                 _arenaBattleConfigId = DefaultArenaBattleConfigId;
                 _arenaBattleSequenceIds.Clear();
@@ -8291,44 +9397,56 @@ namespace DD2SteamMultiplayerHost
             GUILayout.Label(TrimPanelText(string.IsNullOrWhiteSpace(_arenaCombatArenaId)
                 ? Ui("[preset/default]", "[使用预设/默认]")
                 : _arenaCombatArenaId, 60), GUILayout.MinWidth(180f), GUILayout.ExpandWidth(true));
-            if (GUILayout.Button(Ui("Use Preset", "使用预设"), GUILayout.Width(96f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Use Preset", "使用预设"), _panelSubButtonStyle, GUILayout.Width(110f), GUILayout.Height(34f)))
             {
                 _arenaCombatArenaId = string.Empty;
             }
 
-            if (GUILayout.Button(Ui("Fallback", "备用场景"), GUILayout.Width(96f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Fallback", "备用场景"), _panelSubButtonStyle, GUILayout.Width(110f), GUILayout.Height(34f)))
             {
                 _arenaCombatArenaId = DefaultArenaCombatArenaId;
             }
 
             GUILayout.EndHorizontal();
 
-            DrawArenaBattleAdvantagePanel();
-            DrawArenaTorchPanel();
+DrawArenaBattleAdvantagePanel();
 
-            DrawArenaBattleConfigSummary(_arenaBattleConfigId);
-            DrawArenaBattleSequenceSummaryLight();
+GUILayout.BeginHorizontal();
+if (GUILayout.Button(Ui("Torch / Flame", "火炬 / 烛光"), _panelSubButtonStyle, GUILayout.Height(34f)))
+{
+_arenaTorchPanelVisible = !_arenaTorchPanelVisible;
+}
+GUILayout.Label(GetArenaTorchDisplaySummary(), _panelStatusStyle);
+GUILayout.EndHorizontal();
+
+if (_arenaTorchPanelVisible)
+{
+DrawArenaTorchPanel();
+}
+
+DrawArenaBattleConfigSummary(_arenaBattleConfigId);
+DrawArenaBattleSequenceSummaryLight();
             EnsureArenaHeroDraftInitialized();
             DrawArenaHeroDraftSummaryLight();
-            DrawArenaLaunchReadiness();
+            DrawArenaCoopHeroControlBindingPanel();
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Ui("Hero Setup", "英雄设置"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Hero Setup", "英雄设置"), _panelAccentButtonStyle, GUILayout.Height(34f)))
             {
                 _arenaHeroSetupVisible = true;
             }
 
-            if (GUILayout.Button(Ui("Reload Icons", "重载图标"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Reload Icons", "重载图标"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 ForceReloadArenaVisualResources("arena panel");
             }
 
-            if (GUILayout.Button(Ui("Validate Draft", "验证草案"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Validate Draft", "验证草案"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 SaveArenaHeroDraftFromPanel();
             }
 
-            if (GUILayout.Button(_arenaPendingLaunch ? Ui("Launch Pending", "启动等待中") : Ui("Launch Draft", "启动草案"), GUILayout.Height(28f)))
+            if (GUILayout.Button(_arenaPendingLaunch ? Ui("Launch Pending", "启动等待中") : Ui("Launch Draft", "启动草案"), _panelSuccessButtonStyle, GUILayout.Height(34f)))
             {
                 BeginArenaLaunch();
             }
@@ -8336,11 +9454,92 @@ namespace DD2SteamMultiplayerHost
             GUILayout.EndHorizontal();
         }
 
+        private void DrawArenaCoopHeroControlBindingPanel()
+        {
+            if (!HasArenaHeroDraftAnyActor(_arenaHeroDraftSlots) || HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots))
+            {
+                return;
+            }
+
+            GUILayout.Space(6f);
+            DrawSectionHeader(Ui("Co-op Hero Control", "合作英雄控制"));
+            DrawWrappedLabel(Ui(
+                "Optional for custom monster PVE. Each configured draft slot keeps its player after rank movement; duplicate hero classes remain separate.",
+                "仅用于自定义怪物 PVE。每个草案槽的英雄换位后仍由原玩家控制；重复职业也会分别绑定。"));
+
+            bool oldEnabled = GUI.enabled;
+            bool canEdit = _lobbyClient != null && _lobbyClient.IsInLobby && _lobbyClient.IsHost && GameModeMgr.CurrentMode != GameModeType.COMBAT;
+            GUI.enabled = oldEnabled && canEdit;
+            bool nextEnabled = GUILayout.Toggle(
+                _bindCoopControlsToHeroes,
+                Ui("Bind control to configured draft heroes", "按草案英雄锁定控制权"));
+            if (nextEnabled != _bindCoopControlsToHeroes)
+            {
+                _bindCoopControlsToHeroes = nextEnabled;
+                if (nextEnabled)
+                {
+                    for (int i = 0; i < _arenaDraftControlSlots.Length; i++)
+                    {
+                        if (_arenaDraftControlSlots[i] == 0)
+                        {
+                            _arenaDraftControlSlots[i] = i + 1;
+                        }
+                    }
+                }
+                else
+                {
+                    Array.Clear(_arenaDraftControlSlots, 0, _arenaDraftControlSlots.Length);
+                    _coopHeroControlSlots.Clear();
+                }
+                ResetAutoTurnMemory();
+            }
+
+            GUI.enabled = oldEnabled && canEdit && _bindCoopControlsToHeroes;
+            for (int i = 0; i < _arenaHeroDraftSlots.Length; i++)
+            {
+                ArenaHeroDraftSlot draft = _arenaHeroDraftSlots[i];
+                if (draft == null || string.IsNullOrWhiteSpace(draft.ActorId) || IsArenaHeroPlaceholderSlot(draft))
+                {
+                    continue;
+                }
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("S" + (i + 1) + " " + GetArenaActorClassDisplayName(draft.ActorId), GUILayout.Width(220f));
+                int configuredSlot = _arenaDraftControlSlots[i];
+                GUILayout.Label(configuredSlot > 0 ? (Ui("control S", "控制槽 S") + configuredSlot) : Ui("[unbound]", "[未绑定]"), GUILayout.Width(105f));
+                if (GUILayout.Button(Ui("Unbind", "不绑定"), _panelSubButtonStyle, GUILayout.Width(82f), GUILayout.Height(30f)))
+                {
+                    _arenaDraftControlSlots[i] = 0;
+                }
+
+                for (int candidateSlot = 1; candidateSlot <= 4; candidateSlot++)
+                {
+                    HeroSlotAssignmentPayload candidateOwner;
+                    if (!_session.TryGetHeroSlotOwner(candidateSlot, out candidateOwner) || candidateOwner == null)
+                    {
+                        continue;
+                    }
+
+                    if (GUILayout.Button(
+                        candidateOwner.Name + " S" + candidateSlot,
+                        configuredSlot == candidateSlot ? _panelAccentButtonStyle : _panelSubButtonStyle,
+                        GUILayout.MinWidth(88f),
+                        GUILayout.Height(30f)))
+                    {
+                        _arenaDraftControlSlots[i] = candidateSlot;
+                    }
+                }
+
+                GUILayout.EndHorizontal();
+            }
+            GUI.enabled = oldEnabled;
+        }
+
         private void DrawArenaBattleAdvantagePanel()
         {
             bool heroVsHero = HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots);
             GUILayout.Space(6f);
-            GUILayout.Label(Ui("Monster Battle Advantage", "怪物战斗优势"));
+            DrawSectionHeader(Ui("Monster Battle Advantage", "怪物战斗优势"));
             DrawWrappedLabel(Ui(
                 "Arena launch ignores the current run's altar and Flame battle-modifier chance. Pick a deterministic setting here instead.",
                 "竞技场启动会忽略当前存档的祭坛和烛光战斗调整概率，改由这里的设置决定。"));
@@ -8391,8 +9590,8 @@ namespace DD2SteamMultiplayerHost
         private void DrawArenaBattleAdvantageModeButton(ArenaBattleAdvantageMode mode, string label)
         {
             bool selected = _arenaBattleAdvantageMode == mode;
-            string text = selected ? "* " + label : label;
-            if (GUILayout.Button(text, GUILayout.Height(24f)))
+            GUIStyle style = selected ? _panelAccentButtonStyle : _panelSubButtonStyle;
+            if (GUILayout.Button(selected ? ("● " + label) : label, style, GUILayout.Height(34f)))
             {
                 _arenaBattleAdvantageMode = mode;
                 _arenaHeroDraftInitialized = true;
@@ -8410,7 +9609,7 @@ namespace DD2SteamMultiplayerHost
                 RefreshArenaBattleModifierMatchesIfNeeded(true);
             }
 
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(58f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
             {
                 _arenaBattleModifierSearch = string.Empty;
                 RefreshArenaBattleModifierMatchesIfNeeded(true);
@@ -8451,7 +9650,7 @@ namespace DD2SteamMultiplayerHost
         {
             bool heroVsHero = HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots);
             GUILayout.Space(6f);
-            GUILayout.Label(Ui("Arena Flame / Torch", "竞技场火炬 / 烛光"));
+            DrawSectionHeader(Ui("Arena Flame / Torch", "竞技场火炬 / 烛光"));
             DrawWrappedLabel(Ui(
                 "Only custom monster battles use this override. It isolates the demo from the current run's equipped Flame and torch value. Low torch still will not roll enemy advantage; use Monster Battle Advantage above for that.",
                 "只影响自定义打怪战斗。这里会隔离当前存档已装备的火炬和烛光数值；低烛光仍不会自动触发敌方优势，敌方优势请用上面的设置手动控制。"));
@@ -8543,7 +9742,7 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawArenaTorchValueButton(float value)
         {
-            if (GUILayout.Button(value.ToString("0", CultureInfo.InvariantCulture), GUILayout.Width(34f), GUILayout.Height(22f)))
+            if (GUILayout.Button(value.ToString("0", CultureInfo.InvariantCulture), _panelSubButtonStyle, GUILayout.Width(42f), GUILayout.Height(32f)))
             {
                 _arenaTorchValue = Mathf.Clamp(value, 0f, 100f);
             }
@@ -8560,7 +9759,7 @@ namespace DD2SteamMultiplayerHost
                 RefreshArenaTorchMatchesIfNeeded(true);
             }
 
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(58f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
             {
                 _arenaTorchSearch = string.Empty;
                 RefreshArenaTorchMatchesIfNeeded(true);
@@ -8631,27 +9830,18 @@ namespace DD2SteamMultiplayerHost
                 entry = GetArenaBattlePresetEntryFromCache(config.m_Id);
             }
 
-            DrawWrappedLabel(Ui("Enemies: ", "敌人：") + BuildArenaBattleConfigSummaryText(config));
-            if (entry != null)
-            {
-                DrawWrappedLabel(Ui("Sequence: ", "连战：") + (string.IsNullOrWhiteSpace(entry.ChainSummary) ? Ui("[single]", "[单场]") : entry.ChainSummary));
-                DrawArenaValidationLine(
-                    Ui("Preset risk", "预设风险"),
-                    entry.IsLaunchRecommended,
-                    string.IsNullOrWhiteSpace(entry.RiskSummary) ? Ui("recommended", "推荐") : entry.RiskSummary);
-            }
+DrawWrappedLabel(Ui("Enemies: ", "敌人：") + BuildArenaBattleConfigSummaryText(config));
+if (entry != null)
+{
+DrawWrappedLabel(Ui("Sequence: ", "连战：") + (string.IsNullOrWhiteSpace(entry.ChainSummary) ? Ui("[single]", "[单场]") : entry.ChainSummary));
+}
 
-            DrawWrappedLabel(Ui(
-                "Detailed enemy portraits and localized preset search are in Browse. F7 intentionally keeps this preview lightweight.",
-                "敌人头像和本地化搜索在“浏览”窗口中查看。F7 主面板只保留轻量预览。"));
-
-            if (config.m_PlayerActors != null && config.m_PlayerActors.Count > 0)
-            {
-                DrawArenaValidationLine(
-                    Ui("Preset player actors", "预设玩家角色"),
-                    false,
-                    JoinArenaIds(config.m_PlayerActors));
-            }
+if (config.m_PlayerActors != null && config.m_PlayerActors.Count > 0)
+{
+DrawWrappedLabel(Ui(
+"Preset player actors are ignored; party comes from Hero Setup (see launch status chips above): ",
+"预设玩家阵容会被忽略，队伍来自「英雄设置」（见上方启动状态灯）：") + JoinArenaIds(config.m_PlayerActors));
+}
 
             string background = entry == null || string.IsNullOrWhiteSpace(entry.BackgroundScene)
                 ? GetArenaResolvedBackgroundScene(config)
@@ -8659,40 +9849,20 @@ namespace DD2SteamMultiplayerHost
             DrawWrappedLabel(Ui("Background: ", "背景：") + background);
 
             List<string> flags = new List<string>();
-            if (config.HasNextBattle)
-            {
-                flags.Add("nextBattle");
-            }
+if (config.HasNextBattle)
+{
+flags.Add("nextBattle");
+}
 
-            if (config.m_IsNextBattleOptional)
-            {
-                flags.Add("optionalNext");
-            }
+if (config.m_IsNextBattleOptional)
+{
+flags.Add("optionalNext");
+}
 
-            if (config.m_IsKeepCombatContainers)
-            {
-                flags.Add("keepContainers");
-            }
-
-            if (config.BattleModifierOverride != null || !string.IsNullOrWhiteSpace(config.m_BattleModifierOverrideId))
-            {
-                flags.Add("battleModifier");
-            }
-
-            if (config.HeroEffects != null && config.HeroEffects.Count > 0)
-            {
-                flags.Add("heroEffects=" + config.HeroEffects.Count);
-            }
-
-            if (config.EnemyEffects != null && config.EnemyEffects.Count > 0)
-            {
-                flags.Add("enemyEffects=" + config.EnemyEffects.Count);
-            }
-
-            if (config.ActorlessEffects != null && config.ActorlessEffects.Count > 0)
-            {
-                flags.Add("actorlessEffects=" + config.ActorlessEffects.Count);
-            }
+if (config.HeroEffects != null && config.HeroEffects.Count > 0)
+{
+flags.Add("heroEffects=" + config.HeroEffects.Count);
+}
 
             DrawWrappedLabel(Ui("Flags: ", "标记：") + (flags.Count == 0 ? "[none]" : string.Join(", ", flags.ToArray())));
         }
@@ -8745,17 +9915,18 @@ namespace DD2SteamMultiplayerHost
             int oldLabelFontSize = GUI.skin.label.fontSize;
             int oldButtonFontSize = GUI.skin.button.fontSize;
             int oldTextFieldFontSize = GUI.skin.textField.fontSize;
+            GUIStyle oldButtonStyle = GUI.skin.button;
 
             try
             {
                 GUI.contentColor = PanelTextColor;
                 GUI.backgroundColor = Color.white;
-                GUI.skin.label.fontSize = 13;
-                GUI.skin.button.fontSize = 13;
-                GUI.skin.textField.fontSize = 13;
+                GUI.skin.label.fontSize = 16;
+                GUI.skin.button = _panelSubButtonStyle;
+                GUI.skin.textField.fontSize = 15;
 
                 GUILayout.BeginVertical(_panelBodyStyle, GUILayout.ExpandHeight(true));
-                GUILayout.BeginHorizontal(_panelHeaderStyle, GUILayout.Height(38f));
+                GUILayout.BeginHorizontal(_panelHeaderStyle, GUILayout.Height(52f));
                 GUILayout.Label(Ui("Official Battle Presets", "官方战斗预设"), _panelTitleStyle);
                 GUILayout.FlexibleSpace();
                 GUILayout.Label(_arenaBattlePresetCacheBuilt
@@ -8763,17 +9934,17 @@ namespace DD2SteamMultiplayerHost
                        (_arenaBattlePresetMergedChildCount > 0 ? " merged=" + _arenaBattlePresetMergedChildCount : string.Empty))
                     : Ui("not loaded", "未加载"),
                     _panelStatusStyle);
-                if (GUILayout.Button(Ui("Refresh", "刷新"), GUILayout.Width(82f), GUILayout.Height(26f)))
+                if (GUILayout.Button(Ui("Refresh", "刷新"), _panelSubButtonStyle, GUILayout.Width(96f), GUILayout.Height(34f)))
                 {
                     RebuildArenaBattlePresetCache();
                 }
 
-                if (GUILayout.Button(Ui("Reload Icons", "重载图标"), GUILayout.Width(104f), GUILayout.Height(26f)))
+                if (GUILayout.Button(Ui("Reload Icons", "重载图标"), _panelSubButtonStyle, GUILayout.Width(118f), GUILayout.Height(34f)))
                 {
                     ForceReloadArenaVisualResources("battle preset browser");
                 }
 
-                if (GUILayout.Button("X", GUILayout.Width(34f), GUILayout.Height(26f)))
+                if (GUILayout.Button(Ui("Close", "关闭"), _panelSubButtonStyle, GUILayout.Width(86f), GUILayout.Height(34f)))
                 {
                     _arenaBattlePresetBrowserVisible = false;
                 }
@@ -8790,22 +9961,22 @@ namespace DD2SteamMultiplayerHost
                         ref _arenaBattlePresetBrowserRect,
                         ref _arenaBattlePresetBrowserResizing,
                         ref _arenaBattlePresetBrowserResizeChangedThisFrame,
-                        880f,
-                        560f);
-                    GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, _arenaBattlePresetBrowserRect.width - PanelResizeHandleSize), 38f));
+                        ArenaPresetBrowserMinWidth,
+                        ArenaPresetBrowserMinHeight);
+                    GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, _arenaBattlePresetBrowserRect.width - PanelResizeHandleSize), 52f));
                     return;
                 }
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(Ui("Search", "搜索"), GUILayout.Width(64f));
-                string nextSearch = GUILayout.TextField(_arenaBattleConfigSearch ?? string.Empty);
+                GUILayout.Label(Ui("Search", "搜索"), GUILayout.Width(72f));
+                string nextSearch = GUILayout.TextField(_arenaBattleConfigSearch ?? string.Empty, GUILayout.Height(28f));
                 if (!string.Equals(nextSearch, _arenaBattleConfigSearch, StringComparison.Ordinal))
                 {
                     _arenaBattleConfigSearch = nextSearch;
                     RefreshArenaBattlePresetMatchesIfNeeded(true);
                 }
 
-                if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(68f), GUILayout.Height(24f)))
+                if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(78f), GUILayout.Height(32f)))
                 {
                     _arenaBattleConfigSearch = string.Empty;
                     RefreshArenaBattlePresetMatchesIfNeeded(true);
@@ -8829,15 +10000,16 @@ namespace DD2SteamMultiplayerHost
                     ref _arenaBattlePresetBrowserRect,
                     ref _arenaBattlePresetBrowserResizing,
                     ref _arenaBattlePresetBrowserResizeChangedThisFrame,
-                    880f,
-                    560f);
-                GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, _arenaBattlePresetBrowserRect.width - PanelResizeHandleSize), 38f));
+                    ArenaPresetBrowserMinWidth,
+                    ArenaPresetBrowserMinHeight);
+                GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, _arenaBattlePresetBrowserRect.width - PanelResizeHandleSize), 52f));
             }
             finally
             {
                 GUI.contentColor = oldContentColor;
                 GUI.backgroundColor = oldBackgroundColor;
                 GUI.skin.label.fontSize = oldLabelFontSize;
+                GUI.skin.button = oldButtonStyle;
                 GUI.skin.button.fontSize = oldButtonFontSize;
                 GUI.skin.textField.fontSize = oldTextFieldFontSize;
             }
@@ -8850,56 +10022,64 @@ namespace DD2SteamMultiplayerHost
             int oldLabelFontSize = GUI.skin.label.fontSize;
             int oldButtonFontSize = GUI.skin.button.fontSize;
             int oldTextFieldFontSize = GUI.skin.textField.fontSize;
+            GUIStyle oldButtonStyle = GUI.skin.button;
 
             try
             {
                 GUI.contentColor = PanelTextColor;
                 GUI.backgroundColor = Color.white;
-                GUI.skin.label.fontSize = 13;
-                GUI.skin.button.fontSize = 12;
-                GUI.skin.textField.fontSize = 12;
+                GUI.skin.label.fontSize = 16;
+                GUI.skin.button = _panelSubButtonStyle;
+                GUI.skin.textField.fontSize = 15;
 
                 EnsureArenaHeroDraftInitialized();
 
                 GUILayout.BeginVertical(_panelBodyStyle, GUILayout.ExpandHeight(true));
-                GUILayout.BeginHorizontal(_panelHeaderStyle, GUILayout.Height(38f));
+                GUILayout.BeginHorizontal(_panelHeaderStyle, GUILayout.Height(52f));
+                GUILayout.BeginVertical();
                 GUILayout.Label(Ui("Arena Hero Setup", "竞技场英雄设置"), _panelTitleStyle);
-                GUILayout.Label(GetArenaDraftTeamLabel(_arenaHeroSetupTeamIndex), _panelStatusStyle, GUILayout.Width(128f));
+                GUILayout.Label(
+                    GetArenaDraftTeamLabel(_arenaHeroSetupTeamIndex) + " · " + GetArenaHeroDraftValidationSummary(),
+                    _panelSubtitleStyle);
+                GUILayout.EndVertical();
                 GUILayout.FlexibleSpace();
-                GUILayout.Label(GetArenaHeroDraftValidationSummary(), _panelStatusStyle);
-                if (GUILayout.Button(Ui("Import Current", "导入当前"), GUILayout.Width(118f), GUILayout.Height(26f)))
+                if (GUILayout.Button(Ui("Import Current", "导入当前"), _panelAccentButtonStyle, GUILayout.Width(132f), GUILayout.Height(34f)))
                 {
                     ImportArenaHeroDraftFromCurrentParty(true);
                 }
 
-                if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(64f), GUILayout.Height(26f)))
+                if (GUILayout.Button(Ui("Clear", "清空"), _panelDangerButtonStyle, GUILayout.Width(78f), GUILayout.Height(34f)))
                 {
                     ClearArenaHeroDraft();
                 }
 
-                if (GUILayout.Button(Ui("Reload Icons", "重载图标"), GUILayout.Width(104f), GUILayout.Height(26f)))
+                if (GUILayout.Button(Ui("Reload Icons", "重载图标"), _panelSubButtonStyle, GUILayout.Width(118f), GUILayout.Height(34f)))
                 {
                     ForceReloadArenaVisualResources("hero setup");
                 }
 
-                if (GUILayout.Button(Ui("Close", "关闭"), GUILayout.Width(76f), GUILayout.Height(26f)))
+                if (GUILayout.Button(Ui("Close", "关闭"), _panelSubButtonStyle, GUILayout.Width(86f), GUILayout.Height(34f)))
                 {
                     _arenaHeroSetupVisible = false;
                 }
 
                 GUILayout.EndHorizontal();
 
+                GUILayout.Box(GUIContent.none, _panelAccentLineStyle, GUILayout.Height(2f), GUILayout.ExpandWidth(true));
+                GUILayout.Space(4f);
+
                 DrawWrappedLabel(Ui(
-                    "Arena keeps only battle/team ids in native launch prefs. Paths, skills, combat items, trinkets, and quirks are applied from the in-memory draft by the module. Use Reload Icons after returning from main menu if portraits/icons were cached before resources loaded.",
-                    "竞技场只把战斗和队伍 id 放进原生内存启动 prefs。道途、技能、战斗道具、饰品和怪癖都由模块从内存草案直接应用。回主菜单后重新进图若头像/图标缺失，可点“重载图标”。"));
+                    "Left: slots · Middle: hero list · Right: loadout. Paths/skills/items apply from this draft at launch.",
+                    "左：槽位 · 中：英雄列表 · 右：配装。道途/技能/道具会在启动时从本草案应用。"));
 
                 DrawArenaHeroSetupTeamSelector();
+                GUILayout.Space(6f);
 
                 GUILayout.BeginHorizontal(GUILayout.ExpandHeight(true));
                 DrawArenaHeroDraftSlotColumn();
-                GUILayout.Space(10f);
+                GUILayout.Space(12f);
                 DrawArenaHeroCatalogColumn();
-                GUILayout.Space(10f);
+                GUILayout.Space(12f);
                 DrawArenaHeroDraftDetailColumn();
                 GUILayout.EndHorizontal();
 
@@ -8908,15 +10088,17 @@ namespace DD2SteamMultiplayerHost
                     ref _arenaHeroSetupRect,
                     ref _arenaHeroSetupResizing,
                     ref _arenaHeroSetupResizeChangedThisFrame,
-                    860f,
-                    560f);
-                GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, _arenaHeroSetupRect.width - PanelResizeHandleSize), 38f));
+                    ArenaHeroSetupMinWidth,
+                    ArenaHeroSetupMinHeight,
+                    GetArenaHeroSetupScale());
+                GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, _arenaHeroSetupRect.width - PanelResizeHandleSize), 52f));
             }
             finally
             {
                 GUI.contentColor = oldContentColor;
                 GUI.backgroundColor = oldBackgroundColor;
                 GUI.skin.label.fontSize = oldLabelFontSize;
+                GUI.skin.button = oldButtonStyle;
                 GUI.skin.button.fontSize = oldButtonFontSize;
                 GUI.skin.textField.fontSize = oldTextFieldFontSize;
             }
@@ -8924,25 +10106,35 @@ namespace DD2SteamMultiplayerHost
 
         private void ClampArenaHeroSetupRectToScreen()
         {
-            float maxWidth = Mathf.Max(480f, Screen.width - 20f);
-            float maxHeight = Mathf.Max(360f, Screen.height - 20f);
-            float minWidth = Mathf.Min(860f, maxWidth);
-            float minHeight = Mathf.Min(560f, maxHeight);
+            float scale = GetArenaHeroSetupScale();
+            float maxWidth = Mathf.Max(640f, (Screen.width - 16f) / scale);
+            float maxHeight = Mathf.Max(480f, (Screen.height - 16f) / scale);
+            float minWidth = Mathf.Min(ArenaHeroSetupMinWidth, maxWidth);
+            float minHeight = Mathf.Min(
+                Mathf.Max(ArenaHeroSetupMinHeight, Mathf.Min(ArenaHeroSetupMinPhysicalHeight, Screen.height - 16f) / scale),
+                maxHeight);
             _arenaHeroSetupRect.width = Mathf.Clamp(_arenaHeroSetupRect.width, minWidth, maxWidth);
             _arenaHeroSetupRect.height = Mathf.Clamp(_arenaHeroSetupRect.height, minHeight, maxHeight);
-            _arenaHeroSetupRect.x = Mathf.Clamp(_arenaHeroSetupRect.x, 0f, Mathf.Max(0f, Screen.width - _arenaHeroSetupRect.width));
-            _arenaHeroSetupRect.y = Mathf.Clamp(_arenaHeroSetupRect.y, 0f, Mathf.Max(0f, Screen.height - _arenaHeroSetupRect.height));
+            _arenaHeroSetupRect.x = Mathf.Clamp(_arenaHeroSetupRect.x, 0f, Mathf.Max(0f, Screen.width / scale - _arenaHeroSetupRect.width));
+            _arenaHeroSetupRect.y = Mathf.Clamp(_arenaHeroSetupRect.y, 0f, Mathf.Max(0f, Screen.height / scale - _arenaHeroSetupRect.height));
+        }
+
+        private static float GetArenaHeroSetupScale()
+        {
+            float fitWidth = Mathf.Max(1f, Screen.width - 16f) / ArenaHeroSetupDesignWidth;
+            float fitHeight = Mathf.Max(1f, Screen.height - 16f) / ArenaHeroSetupDesignHeight;
+            return Mathf.Clamp(Mathf.Min(fitWidth, fitHeight), ArenaHeroSetupMinScale, 1f);
         }
 
         private void DrawArenaHeroSetupTeamSelector()
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(Ui("Edit side", "编辑队伍"), GUILayout.Width(76f));
+            GUILayout.Label(Ui("Edit side", "编辑队伍"), GUILayout.Width(88f));
             DrawArenaHeroSetupTeamButton(0, GetArenaDraftTeamLabel(0));
             DrawArenaHeroSetupTeamButton(1, GetArenaDraftTeamLabel(1));
             GUILayout.FlexibleSpace();
             if (_arenaHeroSetupTeamIndex == 1 &&
-                GUILayout.Button(Ui("Mirror Party", "镜像我方"), GUILayout.Width(108f), GUILayout.Height(26f)))
+                GUILayout.Button(Ui("Mirror Party", "镜像我方"), _panelAccentButtonStyle, GUILayout.Width(128f), GUILayout.Height(32f)))
             {
                 CopyArenaHeroDraftSlots(_arenaHeroDraftSlots, _arenaEnemyHeroDraftSlots);
                 _arenaHeroDraftSelectedSlot = 0;
@@ -8957,9 +10149,8 @@ namespace DD2SteamMultiplayerHost
         private void DrawArenaHeroSetupTeamButton(int teamIndex, string label)
         {
             bool selected = _arenaHeroSetupTeamIndex == teamIndex;
-            Color oldBackground = GUI.backgroundColor;
-            GUI.backgroundColor = selected ? new Color(0.42f, 0.54f, 0.60f, 1f) : Color.white;
-            if (GUILayout.Button(selected ? ("* " + label) : label, GUILayout.Width(148f), GUILayout.Height(26f)))
+            GUIStyle style = selected ? _panelAccentButtonStyle : _panelSubButtonStyle;
+            if (GUILayout.Button(selected ? ("● " + label) : label, style, GUILayout.Width(168f), GUILayout.Height(32f)))
             {
                 if (_arenaHeroSetupTeamIndex != teamIndex)
                 {
@@ -8971,29 +10162,39 @@ namespace DD2SteamMultiplayerHost
                     }
                 }
             }
-
-            GUI.backgroundColor = oldBackground;
         }
 
         private void DrawArenaHeroDraftSlotColumn()
         {
             ArenaHeroDraftSlot[] slots = GetActiveArenaHeroDraftSlots();
-            GUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(200f), GUILayout.ExpandHeight(true));
-            GUILayout.Label(GetArenaDraftTeamLabel(_arenaHeroSetupTeamIndex));
+            GUILayout.BeginVertical(CreateArenaColumnBoxStyle(), GUILayout.Width(280f), GUILayout.ExpandHeight(true));
+            GUILayout.Label(Ui("Slots · ", "槽位 · ") + GetArenaDraftTeamLabel(_arenaHeroSetupTeamIndex), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             DrawWrappedLabel(Ui(
-                "Launch uses these slots for the selected side. Import Current copies the active run party into this side.",
-                "启动时会把这些槽位用于当前选中的队伍。“导入当前”会把当前对局队伍复制到这一侧。"));
+                "Select a slot, then pick a hero in the middle.",
+                "先选槽位，再在中间选英雄。"));
 
             for (int i = 0; i < slots.Length; i++)
             {
                 DrawArenaHeroDraftSlotRow(i);
-                GUILayout.Space(6f);
+                GUILayout.Space(8f);
             }
 
             GUILayout.FlexibleSpace();
             bool ready = TryGetArenaDraftForLaunch(slots, GetArenaDraftTeamLabel(_arenaHeroSetupTeamIndex), out _, out _, out _, out string error);
             DrawArenaValidationLine(Ui("Draft", "草案"), ready, string.IsNullOrWhiteSpace(error) ? Ui("ready", "就绪") : error);
             GUILayout.EndVertical();
+        }
+
+        private GUIStyle CreateArenaColumnBoxStyle()
+        {
+            GUIStyle style = new GUIStyle(GUI.skin.box)
+            {
+                padding = new RectOffset(12, 12, 10, 10),
+                margin = new RectOffset(0, 0, 0, 0),
+                border = new RectOffset(8, 8, 8, 8),
+            };
+            style.normal.background = _panelSectionTexture;
+            return style;
         }
 
         private void DrawArenaHeroDraftSlotRow(int index)
@@ -9007,8 +10208,12 @@ namespace DD2SteamMultiplayerHost
             ArenaHeroDraftSlot slot = slots[index];
             bool selected = index == _arenaHeroDraftSelectedSlot;
             bool placeholder = IsArenaHeroPlaceholderSlot(slot);
-            Rect row = GUILayoutUtility.GetRect(0f, 86f, GUILayout.ExpandWidth(true), GUILayout.Height(86f));
+            Rect row = GUILayoutUtility.GetRect(0f, 104f, GUILayout.ExpandWidth(true), GUILayout.Height(104f));
             DrawSolidRect(row, selected ? HudCurrentCardColor : HudCardColor);
+            if (selected)
+            {
+                DrawSolidRect(new Rect(row.x, row.y, 4f, row.height), PanelAccentColor);
+            }
 
             if (GUI.Button(row, GUIContent.none, GUIStyle.none))
             {
@@ -9016,41 +10221,42 @@ namespace DD2SteamMultiplayerHost
             }
 
             string actorName = string.IsNullOrWhiteSpace(slot.ActorId)
-                ? "[empty]"
+                ? Ui("[empty]", "[空]")
                 : placeholder ? GetArenaHeroPlaceholderDisplayName() : GetArenaActorClassDisplayName(slot.ActorId);
             string pathName = string.IsNullOrWhiteSpace(slot.PathId)
-                ? "[path]"
+                ? Ui("[path]", "[道途]")
                 : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId);
-            GUIStyle title = CreateHudLabelStyle(12, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
-            GUIStyle meta = CreateHudLabelStyle(10, FontStyle.Normal, PanelMutedTextColor, TextAnchor.UpperLeft);
-            GUI.Label(new Rect(row.x + 12f, row.y + 8f, row.width - 20f, 20f),
-                "S" + (index + 1) + " " + actorName,
+            GUIStyle title = CreateHudLabelStyle(14, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
+            GUIStyle meta = CreateHudLabelStyle(12, FontStyle.Normal, PanelMutedTextColor, TextAnchor.UpperLeft);
+            GUI.Label(new Rect(row.x + 14f, row.y + 10f, row.width - 24f, 22f),
+                "S" + (index + 1) + "  " + actorName,
                 title);
-            GUI.Label(new Rect(row.x + 12f, row.y + 29f, row.width - 20f, 18f),
-                placeholder ? Ui("Mode: placeholder", "模式：占位") : "Path: " + pathName,
+            GUI.Label(new Rect(row.x + 14f, row.y + 34f, row.width - 24f, 20f),
+                placeholder ? Ui("Mode: placeholder", "模式：占位") : Ui("Path: ", "道途：") + pathName,
                 meta);
-            GUI.Label(new Rect(row.x + 12f, row.y + 49f, row.width - 20f, 18f),
-                placeholder ? Ui("No loadout applied", "不应用右侧配置") : "Skills: " + slot.SkillIds.Count + "/5",
+            GUI.Label(new Rect(row.x + 14f, row.y + 56f, row.width - 24f, 20f),
+                placeholder ? Ui("No loadout applied", "不应用右侧配置") : Ui("Skills: ", "技能：") + slot.SkillIds.Count + "/" + GetArenaMaxSkillCountForSlot(slot),
                 meta);
             string itemSummary = placeholder
                 ? ArenaHeroPlaceholderActorId
-                : "Combat: " + (string.IsNullOrWhiteSpace(slot.CombatItemId) ? "[none]" : GetLocalizedItemDisplayName(slot.CombatItemId, slot.CombatItemId)) +
-                    " | Trinkets: " + slot.TrinketIds.Count + "/2";
-            GUI.Label(new Rect(row.x + 12f, row.y + 66f, row.width - 20f, 16f),
-                TrimPanelText(itemSummary, 44),
+                : Ui("Item: ", "道具：") + (string.IsNullOrWhiteSpace(slot.CombatItemId) ? Ui("[none]", "[无]") : GetLocalizedItemDisplayName(slot.CombatItemId, slot.CombatItemId)) +
+                    " · " + Ui("Trinkets: ", "饰品：") + slot.TrinketIds.Count + "/2";
+            GUI.Label(new Rect(row.x + 14f, row.y + 76f, row.width - 24f, 20f),
+                TrimPanelText(itemSummary, 48),
                 meta);
         }
 
         private void DrawArenaHeroCatalogColumn()
         {
-            GUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(220f), GUILayout.ExpandHeight(true));
+            GUILayout.BeginVertical(CreateArenaColumnBoxStyle(), GUILayout.Width(300f), GUILayout.ExpandHeight(true));
             GUILayout.BeginHorizontal();
-            GUILayout.Label(Ui("Heroes", "英雄"), GUILayout.Width(70f));
+            GUILayout.Label(Ui("Heroes", "英雄"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft), GUILayout.Width(84f));
             GUILayout.FlexibleSpace();
             GUILayout.Label(_arenaHeroCatalogBuilt
                 ? (_arenaHeroCatalogMatches.Count + "/" + _arenaHeroCatalogTotalCount)
-                : Ui("not loaded", "未加载"));
-            if (GUILayout.Button(Ui("Refresh", "刷新"), GUILayout.Width(76f), GUILayout.Height(24f)))
+                : Ui("not loaded", "未加载"),
+                CreateHudLabelStyle(13, FontStyle.Normal, PanelMutedTextColor, TextAnchor.MiddleRight));
+            if (GUILayout.Button(Ui("Refresh", "刷新"), _panelSubButtonStyle, GUILayout.Width(86f), GUILayout.Height(30f)))
             {
                 RebuildArenaHeroCatalog();
             }
@@ -9067,15 +10273,15 @@ namespace DD2SteamMultiplayerHost
             }
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label(Ui("Search", "搜索"), GUILayout.Width(54f));
-            string nextSearch = GUILayout.TextField(_arenaHeroDraftSearch ?? string.Empty);
+            GUILayout.Label(Ui("Search", "搜索"), GUILayout.Width(64f));
+            string nextSearch = GUILayout.TextField(_arenaHeroDraftSearch ?? string.Empty, GUILayout.Height(28f));
             if (!string.Equals(nextSearch, _arenaHeroDraftSearch, StringComparison.Ordinal))
             {
                 _arenaHeroDraftSearch = nextSearch;
                 RefreshArenaHeroCatalogMatchesIfNeeded(true);
             }
 
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(58f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(68f), GUILayout.Height(30f)))
             {
                 _arenaHeroDraftSearch = string.Empty;
                 RefreshArenaHeroCatalogMatchesIfNeeded(true);
@@ -9095,6 +10301,7 @@ namespace DD2SteamMultiplayerHost
                 foreach (ArenaHeroCatalogEntry entry in _arenaHeroCatalogMatches)
                 {
                     DrawArenaHeroCatalogRow(entry);
+                    GUILayout.Space(4f);
                 }
             }
             finally
@@ -9111,35 +10318,41 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
-            Rect row = GUILayoutUtility.GetRect(0f, 52f, GUILayout.ExpandWidth(true), GUILayout.Height(52f));
+            Rect row = GUILayoutUtility.GetRect(0f, 64f, GUILayout.ExpandWidth(true), GUILayout.Height(64f));
             bool selectedActor = string.Equals(GetSelectedArenaHeroDraftSlot().ActorId, entry.ActorId, StringComparison.Ordinal);
             DrawSolidRect(row, selectedActor ? HudCurrentCardColor : HudCardColor);
+            if (selectedActor)
+            {
+                DrawSolidRect(new Rect(row.x, row.y, 4f, row.height), PanelAccentColor);
+            }
 
             if (GUI.Button(row, GUIContent.none, GUIStyle.none))
             {
                 SetArenaHeroDraftActor(_arenaHeroDraftSelectedSlot, entry.ActorId);
             }
 
-            GUIStyle title = CreateHudLabelStyle(12, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
-            GUIStyle meta = CreateHudLabelStyle(10, FontStyle.Normal, PanelMutedTextColor, TextAnchor.UpperLeft);
+            GUIStyle title = CreateHudLabelStyle(14, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
+            GUIStyle meta = CreateHudLabelStyle(12, FontStyle.Normal, PanelMutedTextColor, TextAnchor.UpperLeft);
             bool placeholder = IsArenaHeroPlaceholderActorId(entry.ActorId);
             string displayName = placeholder ? GetArenaHeroPlaceholderDisplayName() : entry.DisplayName ?? entry.ActorId;
-            GUI.Label(new Rect(row.x + 10f, row.y + 7f, row.width - 20f, 20f),
-                (selectedActor ? "* " : string.Empty) + displayName,
+            GUI.Label(new Rect(row.x + 12f, row.y + 10f, row.width - 22f, 22f),
+                displayName,
                 title);
-            GUI.Label(new Rect(row.x + 10f, row.y + 29f, row.width - 20f, 18f),
+            GUI.Label(new Rect(row.x + 12f, row.y + 34f, row.width - 22f, 20f),
                 TrimPanelText(placeholder ? Ui("Placeholder | ", "占位 | ") + entry.ActorId : entry.ActorId ?? string.Empty, 42),
                 meta);
         }
 
         private void DrawArenaHeroDraftDetailColumn()
         {
-            GUILayout.BeginVertical(GUI.skin.box, GUILayout.ExpandHeight(true));
+            GUILayout.BeginVertical(CreateArenaColumnBoxStyle(), GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
             ArenaHeroDraftSlot slot = GetSelectedArenaHeroDraftSlot();
-            GUILayout.Label(GetArenaDraftTeamLabel(_arenaHeroSetupTeamIndex) + " | " + Ui("Slot ", "槽位 ") + (_arenaHeroDraftSelectedSlot + 1));
+            GUILayout.Label(
+                GetArenaDraftTeamLabel(_arenaHeroSetupTeamIndex) + " · " + Ui("Slot ", "槽位 ") + (_arenaHeroDraftSelectedSlot + 1),
+                CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
 
             DrawArenaHeroDraftActorHeader(slot);
-            GUILayout.Space(8f);
+            GUILayout.Space(6f);
             if (IsArenaHeroPlaceholderSlot(slot))
             {
                 DrawArenaHeroPlaceholderNotice();
@@ -9148,19 +10361,24 @@ namespace DD2SteamMultiplayerHost
             }
 
             DrawArenaHeroDraftPathPicker(slot);
-            GUILayout.Space(8f);
-            DrawArenaHeroDetailTabBar();
             GUILayout.Space(6f);
+            DrawArenaHeroDetailTabBar();
+            GUILayout.Space(4f);
+
+            // Keep the entire loadout body scrollable; fixed-height candidate math clips
+            // multi-row equipped skills at short resolutions.
             _arenaHeroDetailScroll = GUILayout.BeginScrollView(
                 _arenaHeroDetailScroll,
                 false,
                 true,
                 GUI.skin.horizontalScrollbar,
                 GUI.skin.verticalScrollbar,
+                GUILayout.ExpandWidth(true),
                 GUILayout.ExpandHeight(true));
             try
             {
-                DrawArenaHeroDetailTabContent(slot);
+                DrawArenaHeroDetailTabFixedHeader(slot);
+                DrawArenaHeroDetailTabCandidates(slot);
             }
             finally
             {
@@ -9186,9 +10404,8 @@ namespace DD2SteamMultiplayerHost
         private void DrawArenaHeroDetailTabButton(ArenaHeroDetailTab tab, string label)
         {
             bool selected = _arenaHeroDetailTab == tab;
-            Color oldBackground = GUI.backgroundColor;
-            GUI.backgroundColor = selected ? new Color(0.42f, 0.54f, 0.60f, 1f) : Color.white;
-            if (GUILayout.Button(selected ? ("* " + label) : label, GUILayout.Height(26f), GUILayout.MinWidth(104f)))
+            GUIStyle style = selected ? _panelAccentButtonStyle : _panelSubButtonStyle;
+            if (GUILayout.Button(selected ? ("● " + label) : label, style, GUILayout.Height(32f), GUILayout.MinWidth(118f)))
             {
                 if (_arenaHeroDetailTab != tab)
                 {
@@ -9196,31 +10413,54 @@ namespace DD2SteamMultiplayerHost
                     _arenaHeroDetailScroll = Vector2.zero;
                 }
             }
-
-            GUI.backgroundColor = oldBackground;
         }
 
-        private void DrawArenaHeroDetailTabContent(ArenaHeroDraftSlot slot)
+        private void DrawArenaHeroDetailTabFixedHeader(ArenaHeroDraftSlot slot)
         {
             switch (_arenaHeroDetailTab)
             {
                 case ArenaHeroDetailTab.CombatItem:
-                    DrawArenaHeroDraftCombatItemPicker(slot);
+                    DrawArenaHeroDraftCombatItemFixedHeader(slot);
                     break;
                 case ArenaHeroDetailTab.Trinkets:
-                    DrawArenaHeroDraftTrinketPicker(slot);
+                    DrawArenaHeroDraftTrinketFixedHeader(slot);
                     break;
                 case ArenaHeroDetailTab.Quirks:
-                    DrawArenaHeroDraftQuirkPicker(slot);
+                    DrawArenaHeroDraftQuirkFixedHeader(slot);
                     break;
                 case ArenaHeroDetailTab.StartBuffs:
-                    DrawArenaHeroStartBuffPicker();
+                    DrawArenaHeroStartBuffFixedHeader();
                     break;
                 case ArenaHeroDetailTab.Ordainment:
-                    DrawArenaEnemyOrdainmentPicker();
+                    DrawArenaEnemyOrdainmentFixedHeader();
                     break;
                 default:
-                    DrawArenaHeroDraftSkillPicker(slot);
+                    DrawArenaHeroDraftSkillFixedHeader(slot);
+                    break;
+            }
+        }
+
+        private void DrawArenaHeroDetailTabCandidates(ArenaHeroDraftSlot slot)
+        {
+            switch (_arenaHeroDetailTab)
+            {
+                case ArenaHeroDetailTab.CombatItem:
+                    DrawArenaHeroDraftCombatItemCandidates(slot);
+                    break;
+                case ArenaHeroDetailTab.Trinkets:
+                    DrawArenaHeroDraftTrinketCandidates(slot);
+                    break;
+                case ArenaHeroDetailTab.Quirks:
+                    DrawArenaHeroDraftQuirkCandidates(slot);
+                    break;
+                case ArenaHeroDetailTab.StartBuffs:
+                    DrawArenaHeroStartBuffCandidates();
+                    break;
+                case ArenaHeroDetailTab.Ordainment:
+                    DrawArenaEnemyOrdainmentCandidates();
+                    break;
+                default:
+                    DrawArenaHeroDraftSkillCandidates(slot);
                     break;
             }
         }
@@ -9228,8 +10468,8 @@ namespace DD2SteamMultiplayerHost
         private void DrawArenaHeroDraftActorHeader(ArenaHeroDraftSlot slot)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(Ui("Actor id", "角色 id"), GUILayout.Width(62f));
-            string nextActorId = GUILayout.TextField(slot.ActorId ?? string.Empty);
+            GUILayout.Label(Ui("Actor id", "角色 id"), GUILayout.Width(78f));
+            string nextActorId = GUILayout.TextField(slot.ActorId ?? string.Empty, GUILayout.Height(28f));
             if (!string.Equals(nextActorId, slot.ActorId ?? string.Empty, StringComparison.Ordinal))
             {
                 SetArenaHeroDraftActor(_arenaHeroDraftSelectedSlot, nextActorId);
@@ -9239,7 +10479,7 @@ namespace DD2SteamMultiplayerHost
             bool placeholder = IsArenaHeroPlaceholderSlot(slot);
             bool oldEnabled = GUI.enabled;
             GUI.enabled = oldEnabled && !placeholder;
-            if (GUILayout.Button(Ui("Default Skills", "默认技能"), GUILayout.Width(106f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Default Skills", "默认技能"), _panelSubButtonStyle, GUILayout.Width(124f), GUILayout.Height(32f)))
             {
                 ResetArenaHeroDraftSkills(_arenaHeroDraftSelectedSlot);
             }
@@ -9253,26 +10493,26 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
-            Rect tile = GUILayoutUtility.GetRect(0f, 92f, GUILayout.ExpandWidth(true), GUILayout.Height(92f));
+            Rect tile = GUILayoutUtility.GetRect(0f, 78f, GUILayout.ExpandWidth(true), GUILayout.Height(78f));
             DrawSolidRect(tile, HudCardColor);
-            Rect portrait = new Rect(tile.x + 10f, tile.y + 10f, 70f, 70f);
+            Rect portrait = new Rect(tile.x + 8f, tile.y + 8f, 62f, 62f);
             DrawSolidRect(portrait, new Color(0.04f, 0.045f, 0.05f, 1f));
             DrawPortraitSprite(portrait, GetActorPortraitSprite(slot.ActorId));
 
-            GUIStyle title = CreateHudLabelStyle(14, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
-            GUIStyle meta = CreateHudLabelStyle(11, FontStyle.Normal, PanelMutedTextColor, TextAnchor.UpperLeft);
-            GUI.Label(new Rect(tile.x + 90f, tile.y + 10f, tile.width - 100f, 24f),
+            GUIStyle title = CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
+            GUIStyle meta = CreateHudLabelStyle(13, FontStyle.Normal, PanelMutedTextColor, TextAnchor.UpperLeft);
+            GUI.Label(new Rect(tile.x + 82f, tile.y + 8f, tile.width - 92f, 24f),
                 placeholder ? GetArenaHeroPlaceholderDisplayName() : GetArenaActorClassDisplayName(slot.ActorId),
                 title);
-            GUI.Label(new Rect(tile.x + 90f, tile.y + 36f, tile.width - 100f, 20f),
+            GUI.Label(new Rect(tile.x + 82f, tile.y + 34f, tile.width - 92f, 20f),
                 placeholder
                     ? Ui("Path: disabled for placeholder", "道途：占位禁用")
-                    : "Path: " + (string.IsNullOrWhiteSpace(slot.PathId) ? "[path]" : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId)),
+                    : Ui("Path: ", "道途：") + (string.IsNullOrWhiteSpace(slot.PathId) ? Ui("[path]", "[道途]") : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId)),
                 meta);
-            GUI.Label(new Rect(tile.x + 90f, tile.y + 58f, tile.width - 100f, 20f),
+            GUI.Label(new Rect(tile.x + 82f, tile.y + 54f, tile.width - 92f, 18f),
                 placeholder
                     ? Ui("No loadout applied | id=", "不应用配置 | id=") + slot.ActorId
-                    : "Skills: " + slot.SkillIds.Count + "/5 | id=" + slot.ActorId,
+                    : Ui("Skills: ", "技能：") + slot.SkillIds.Count + "/" + GetArenaMaxSkillCountForSlot(slot) + " | id=" + slot.ActorId,
                 meta);
         }
 
@@ -9291,7 +10531,27 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawArenaHeroDraftPathPicker(ArenaHeroDraftSlot slot)
         {
-            GUILayout.Label(Ui("Path", "道途"));
+            string currentPath = string.IsNullOrWhiteSpace(slot.ActorId) || string.IsNullOrWhiteSpace(slot.PathId)
+                ? Ui("[path]", "[道途]")
+                : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId);
+
+            GUILayout.BeginHorizontal();
+            string toggleLabel = (_arenaHeroPathSectionExpanded ? "▼ " : "▶ ") +
+                Ui("Path", "道途") +
+                (_arenaHeroPathSectionExpanded ? string.Empty : (" · " + currentPath));
+            if (GUILayout.Button(toggleLabel, _panelSubButtonStyle, GUILayout.Height(32f), GUILayout.ExpandWidth(true)))
+            {
+                _arenaHeroPathSectionExpanded = !_arenaHeroPathSectionExpanded;
+            }
+
+            GUILayout.EndHorizontal();
+
+            if (!_arenaHeroPathSectionExpanded)
+            {
+                return;
+            }
+
+            GUILayout.Space(4f);
             if (string.IsNullOrWhiteSpace(slot.ActorId))
             {
                 DrawWrappedLabel(Ui("No actor selected.", "未选择角色。"));
@@ -9305,6 +10565,21 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
+            Dictionary<string, int> nameCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < paths.Count; i++)
+            {
+                ActorDataPath path = paths[i];
+                if (path == null)
+                {
+                    continue;
+                }
+
+                string displayName = GetArenaDraftPathDisplayName(path.Id, slot.ActorId);
+                int count;
+                nameCounts.TryGetValue(displayName, out count);
+                nameCounts[displayName] = count + 1;
+            }
+
             const int columns = 2;
             for (int i = 0; i < paths.Count; i += columns)
             {
@@ -9313,8 +10588,10 @@ namespace DD2SteamMultiplayerHost
                 {
                     ActorDataPath path = paths[i + column];
                     bool selected = path != null && string.Equals(path.Id, slot.PathId, StringComparison.Ordinal);
-                    string label = path == null ? "[path]" : GetArenaDraftPathDisplayName(path.Id, slot.ActorId);
-                    if (GUILayout.Button(selected ? ("* " + label) : label, GUILayout.Height(28f)))
+                    string label = path == null
+                        ? "[path]"
+                        : FormatArenaPathButtonLabel(path, slot.ActorId, nameCounts);
+                    if (GUILayout.Button(selected ? ("● " + label) : label, selected ? _panelAccentButtonStyle : _panelSubButtonStyle, GUILayout.Height(34f)))
                     {
                         SetArenaHeroDraftPath(_arenaHeroDraftSelectedSlot, path == null ? string.Empty : path.Id);
                     }
@@ -9324,42 +10601,122 @@ namespace DD2SteamMultiplayerHost
             }
         }
 
+        private static string FormatArenaPathButtonLabel(
+            ActorDataPath path,
+            string actorId,
+            IReadOnlyDictionary<string, int> nameCounts)
+        {
+            string displayName = GetArenaDraftPathDisplayName(path.Id, actorId);
+            int count;
+            if (nameCounts != null &&
+                nameCounts.TryGetValue(displayName, out count) &&
+                count > 1 &&
+                !string.IsNullOrWhiteSpace(path.Id))
+            {
+                // Same localized name from different path ids (often other-class wanderers
+                // wrongly admitted by tag overwrite). Keep them distinguishable.
+                return displayName + " [" + path.Id + "]";
+            }
+
+            return displayName;
+        }
+
         private void DrawArenaHeroDraftSkillPicker(ArenaHeroDraftSlot slot)
         {
-            GUILayout.Label(Ui("Skills", "技能"));
+            DrawArenaHeroDraftSkillFixedHeader(slot);
+            DrawArenaHeroDraftSkillCandidates(slot);
+        }
+
+        private void DrawArenaHeroDraftSkillFixedHeader(ArenaHeroDraftSlot slot)
+        {
+            DrawArenaHeroDraftEquippedSkills(slot);
+            GUILayout.Space(4f);
+            GUILayout.Label(Ui("Skill Candidates", "候选技能"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
+            if (IsArenaAbominationActor(slot.ActorId))
+            {
+                DrawWrappedLabel(Ui(
+                    "Abomination: row1 human+Transform, row2 beast+Revert. Max 10. Transform/Revert upgrade stay paired.",
+                    "狼人：上排人类+变身，下排野兽+还原。最多10个。变身/还原强化会联动。"));
+            }
+            else
+            {
+                DrawWrappedLabel(Ui("Click a skill to add/remove it.", "点击技能可添加/移除。"));
+            }
+        }
+
+        private void DrawArenaHeroDraftEquippedSkills(ArenaHeroDraftSlot slot)
+        {
+            GUILayout.Label(Ui("Equipped Skills", "已装备技能"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             if (string.IsNullOrWhiteSpace(slot.ActorId))
             {
                 DrawWrappedLabel(Ui("No actor selected.", "未选择角色。"));
                 return;
             }
 
-            GUILayout.BeginHorizontal();
-            for (int i = 0; i < 5; i++)
+            int maxSkills = GetArenaMaxSkillCountForSlot(slot);
+            bool isAbomination = IsArenaAbominationActor(slot.ActorId);
+            const int slotsPerRow = 5;
+            const float tileWidth = 104f;
+            const float iconSize = 52f;
+            const float nameHeight = 32f;
+            const float upgradeHeight = 30f;
+            int rows = isAbomination ? 2 : 1;
+
+            for (int row = 0; row < rows; row++)
             {
-                string skillId = i < slot.SkillIds.Count ? slot.SkillIds[i] : string.Empty;
-                Rect rect = GUILayoutUtility.GetRect(76f, 78f, GUILayout.Width(76f), GUILayout.Height(78f));
-                DrawSolidRect(rect, string.IsNullOrWhiteSpace(skillId) ? HudHostOnlyCardColor : HudTileColor);
-                if (!string.IsNullOrWhiteSpace(skillId))
+                GUILayout.BeginHorizontal();
+                int slotsThisRow = (row == 0) ? slotsPerRow : (maxSkills - slotsPerRow);
+                for (int i = 0; i < slotsThisRow; i++)
                 {
-                    DrawSprite(new Rect(rect.x + 14f, rect.y + 5f, 48f, 48f), GetSkillSprite(skillId));
-                    if (GUI.Button(new Rect(rect.x + rect.width - 20f, rect.y + 2f, 18f, 18f), "x"))
+                    int skillIndex = row * slotsPerRow + i;
+                    string skillId = skillIndex < slot.SkillIds.Count ? slot.SkillIds[skillIndex] : string.Empty;
+                    float tileHeight = 8f + iconSize + 4f + nameHeight + 4f + upgradeHeight + 6f;
+                    Rect rect = GUILayoutUtility.GetRect(tileWidth, tileHeight, GUILayout.Width(tileWidth), GUILayout.Height(tileHeight));
+                    DrawSolidRect(rect, string.IsNullOrWhiteSpace(skillId) ? HudHostOnlyCardColor : HudTileColor);
+                    if (!string.IsNullOrWhiteSpace(skillId))
                     {
-                        slot.SkillIds.RemoveAt(i);
-                        _arenaHeroDraftInitialized = true;
+                        float iconX = rect.x + (tileWidth - iconSize) * 0.5f;
+                        DrawSprite(new Rect(iconX, rect.y + 8f, iconSize, iconSize), GetSkillSprite(skillId));
+                        if (GUI.Button(new Rect(rect.x + rect.width - 24f, rect.y + 4f, 20f, 20f), "x", _panelSubButtonStyle))
+                        {
+                            slot.SkillIds.RemoveAt(skillIndex);
+                            _arenaHeroDraftInitialized = true;
+                        }
+
+                        string skillName = GetCachedArenaSkillDisplayName(skillId);
+                        GUIStyle nameStyle = CreateHudLabelStyle(12, FontStyle.Bold, Color.white, TextAnchor.UpperCenter);
+                        nameStyle.wordWrap = true;
+                        GUI.Label(
+                            new Rect(rect.x + 4f, rect.y + 8f + iconSize + 2f, rect.width - 8f, nameHeight),
+                            TrimPanelText(skillName, IsChineseUi ? 10 : 14),
+                            nameStyle);
+
+                        DrawArenaHeroDraftSkillUpgradeButton(
+                            slot,
+                            skillIndex,
+                            skillId,
+                            new Rect(rect.x + 6f, rect.y + rect.height - upgradeHeight - 6f, rect.width - 12f, upgradeHeight));
+                    }
+                    else
+                    {
+                        GUIStyle meta = CreateHudLabelStyle(18, FontStyle.Bold, PanelMutedTextColor, TextAnchor.MiddleCenter);
+                        GUI.Label(rect, "+", meta);
                     }
 
-                    DrawArenaHeroDraftSkillUpgradeButton(slot, i, skillId, new Rect(rect.x + 5f, rect.y + 55f, rect.width - 10f, 19f));
-                }
-                else
-                {
-                    GUIStyle meta = CreateHudLabelStyle(10, FontStyle.Normal, PanelMutedTextColor, TextAnchor.MiddleCenter);
-                    GUI.Label(rect, "+", meta);
+                    GUILayout.Space(8f);
                 }
 
-                GUILayout.Space(6f);
+                GUILayout.EndHorizontal();
+                GUILayout.Space(4f);
             }
+        }
 
-            GUILayout.EndHorizontal();
+        private void DrawArenaHeroDraftSkillCandidates(ArenaHeroDraftSlot slot)
+        {
+            if (string.IsNullOrWhiteSpace(slot.ActorId))
+            {
+                return;
+            }
 
             List<string> availableSkills = GetArenaDraftAvailableSkillIds(slot.ActorId, slot.PathId);
             if (availableSkills.Count == 0)
@@ -9368,7 +10725,6 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
-            DrawWrappedLabel(Ui("Click a skill to add/remove it. Launch requires exactly 5 skills.", "点击技能可添加/移除。启动需要正好 5 个技能。"));
             const int columns = 2;
             for (int i = 0; i < availableSkills.Count; i += columns)
             {
@@ -9379,6 +10735,7 @@ namespace DD2SteamMultiplayerHost
                 }
 
                 GUILayout.EndHorizontal();
+                GUILayout.Space(6f);
             }
         }
 
@@ -9387,8 +10744,13 @@ namespace DD2SteamMultiplayerHost
             int selectedIndex = FindArenaHeroDraftSkillIndex(slot, skillId);
             bool selected = selectedIndex >= 0;
             string selectedSkillId = selected ? slot.SkillIds[selectedIndex] : skillId;
-            Rect row = GUILayoutUtility.GetRect(0f, 92f, GUILayout.ExpandWidth(true), GUILayout.Height(92f));
+            Rect row = GUILayoutUtility.GetRect(0f, 110f, GUILayout.ExpandWidth(true), GUILayout.Height(110f));
             DrawSolidRect(row, selected ? HudCurrentCardColor : HudCardColor);
+            if (selected)
+            {
+                DrawSolidRect(new Rect(row.x, row.y, 4f, row.height), PanelAccentColor);
+            }
+
             string label = GetCachedArenaSkillDisplayName(selectedSkillId);
             string description = GetCachedArenaSkillDescription(selectedSkillId);
             if (GUI.Button(row, GUIContent.none, GUIStyle.none))
@@ -9396,20 +10758,20 @@ namespace DD2SteamMultiplayerHost
                 ToggleArenaHeroDraftSkill(slot, skillId);
             }
 
-            Rect icon = new Rect(row.x + 8f, row.y + 10f, 52f, 52f);
+            Rect icon = new Rect(row.x + 10f, row.y + 14f, 64f, 64f);
             DrawSolidRect(icon, new Color(0.05f, 0.055f, 0.06f, 1f));
             DrawSprite(icon, GetSkillSprite(selectedSkillId));
 
-            GUIStyle title = CreateHudLabelStyle(13, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
-            string prefix = selected ? (IsArenaSkillUpgrade(selectedSkillId) ? "* " + Ui("Mastered ", "强化 ") : "* ") : string.Empty;
-            GUI.Label(new Rect(row.x + 70f, row.y + 8f, row.width - 80f, 22f), prefix + label, title);
-            DrawInlineDescriptionPreview(new Rect(row.x + 70f, row.y + 32f, row.width - 80f, 54f), description, 11);
+            GUIStyle title = CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
+            string prefix = selected ? (IsArenaSkillUpgrade(selectedSkillId) ? "● " + Ui("Mastered ", "强化 ") : "● ") : string.Empty;
+            GUI.Label(new Rect(row.x + 86f, row.y + 12f, row.width - 98f, 26f), prefix + label, title);
+            DrawInlineDescriptionPreview(new Rect(row.x + 86f, row.y + 42f, row.width - 98f, 58f), description, 13);
         }
 
         private void DrawArenaHeroDraftSkillUpgradeButton(ArenaHeroDraftSlot slot, int skillIndex, string skillId, Rect rect)
         {
             string upgradeSkillId = GetArenaSkillUpgradeId(skillId);
-            GUIStyle labelStyle = CreateHudLabelStyle(10, FontStyle.Normal, PanelMutedTextColor, TextAnchor.MiddleCenter);
+            GUIStyle labelStyle = CreateHudLabelStyle(13, FontStyle.Bold, PanelMutedTextColor, TextAnchor.MiddleCenter);
             if (string.IsNullOrWhiteSpace(upgradeSkillId))
             {
                 GUI.Label(rect, Ui("No Upg", "无强化"), labelStyle);
@@ -9417,25 +10779,50 @@ namespace DD2SteamMultiplayerHost
             }
 
             bool upgraded = IsArenaSkillUpgrade(skillId);
-            Color oldBackground = GUI.backgroundColor;
-            GUI.backgroundColor = upgraded
-                ? new Color(0.95f, 0.74f, 0.28f, 1f)
-                : new Color(0.30f, 0.35f, 0.39f, 1f);
-
-            if (GUI.Button(rect, upgraded ? Ui("Mastered", "强化") : Ui("Normal", "普通")))
+            GUIStyle style = upgraded ? _panelSuccessButtonStyle : _panelSubButtonStyle;
+            if (GUI.Button(rect, upgraded ? Ui("Mastered", "强化") : Ui("Normal", "普通"), style))
             {
                 if (skillIndex >= 0 && skillIndex < slot.SkillIds.Count)
                 {
-                    slot.SkillIds[skillIndex] = upgraded ? StripArenaSkillUpgradeSuffix(skillId) : upgradeSkillId;
+                    string newSkillId = upgraded ? StripArenaSkillUpgradeSuffix(skillId) : upgradeSkillId;
+                    slot.SkillIds[skillIndex] = newSkillId;
                     _arenaHeroDraftInitialized = true;
+
+                    // If this is an Abomination transform skill, sync the paired transform's upgrade state.
+                    if (IsArenaAbominationActor(slot.ActorId) && IsArenaAbominationTransformSkill(skillId))
+                    {
+                        List<string> available = GetArenaDraftAvailableSkillIds(slot.ActorId, slot.PathId);
+                        string pairedId = FindPairedTransformSkillId(newSkillId, available);
+                        if (!string.IsNullOrWhiteSpace(pairedId))
+                        {
+                            // Ensure the paired id matches the upgrade state of the skill we just changed.
+                            string pairedUpgradeId = GetArenaSkillUpgradeId(pairedId);
+                            string desiredPairedId = upgraded
+                                ? StripArenaSkillUpgradeSuffix(pairedId)
+                                : (!string.IsNullOrWhiteSpace(pairedUpgradeId) ? pairedUpgradeId : pairedId);
+
+                            int pairedIndex = FindArenaHeroDraftSkillIndex(slot, desiredPairedId);
+                            // FindArenaHeroDraftSkillIndex matches by base id, so we need to check
+                            // if the found entry's upgrade state matches what we want.
+                            if (pairedIndex >= 0 && pairedIndex < slot.SkillIds.Count)
+                            {
+                                slot.SkillIds[pairedIndex] = desiredPairedId;
+                            }
+                        }
+                    }
+
                     NormalizeArenaHeroDraftSkills(slot, false);
                 }
             }
-
-            GUI.backgroundColor = oldBackground;
         }
 
         private void DrawArenaHeroDraftCombatItemPicker(ArenaHeroDraftSlot slot)
+        {
+            DrawArenaHeroDraftCombatItemFixedHeader(slot);
+            DrawArenaHeroDraftCombatItemCandidates(slot);
+        }
+
+        private void DrawArenaHeroDraftCombatItemFixedHeader(ArenaHeroDraftSlot slot)
         {
             if (slot == null)
             {
@@ -9443,45 +10830,56 @@ namespace DD2SteamMultiplayerHost
             }
 
             EnsureArenaHeroItemCatalog();
-
-            GUILayout.Label(Ui("Combat Item", "战斗道具"));
+            GUILayout.Label(Ui("Combat Item", "战斗道具"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             DrawArenaSelectedCombatItem(slot);
             GUILayout.BeginHorizontal();
             GUILayout.Label("Id", GUILayout.Width(28f));
-            string nextCombatItem = GUILayout.TextField(slot.CombatItemId ?? string.Empty);
+            string nextCombatItem = GUILayout.TextField(slot.CombatItemId ?? string.Empty, GUILayout.Height(28f));
             if (!string.Equals(nextCombatItem, slot.CombatItemId ?? string.Empty, StringComparison.Ordinal))
             {
                 slot.CombatItemId = nextCombatItem.Trim();
                 _arenaHeroDraftInitialized = true;
             }
 
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(58f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
             {
                 slot.CombatItemId = string.Empty;
                 _arenaHeroDraftInitialized = true;
             }
 
             GUILayout.EndHorizontal();
-
             DrawArenaItemSearchRow(Ui("Search", "搜索"), ref _arenaHeroCombatItemSearch, true);
+            GUILayout.Label(Ui("Candidates", "候选"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
+        }
+
+        private void DrawArenaHeroDraftCombatItemCandidates(ArenaHeroDraftSlot slot)
+        {
+            if (slot == null)
+            {
+                return;
+            }
+
+            EnsureArenaHeroItemCatalog();
             RefreshArenaHeroItemMatchesIfNeeded(true, false);
             if (_arenaCombatItemMatches.Count == 0)
             {
                 DrawWrappedLabel(Ui("No matching combat item.", "没有匹配的战斗道具。"));
             }
-
-            foreach (ArenaItemCatalogEntry entry in _arenaCombatItemMatches)
+            else
             {
-                DrawArenaItemCatalogRow(
-                    entry,
-                    string.Equals(slot.CombatItemId, entry.ItemId, StringComparison.Ordinal),
-                    () =>
-                    {
-                        slot.CombatItemId = string.Equals(slot.CombatItemId, entry.ItemId, StringComparison.Ordinal)
-                            ? string.Empty
-                            : entry.ItemId;
-                        _arenaHeroDraftInitialized = true;
-                    });
+                foreach (ArenaItemCatalogEntry entry in _arenaCombatItemMatches)
+                {
+                    DrawArenaItemCatalogRow(
+                        entry,
+                        string.Equals(slot.CombatItemId, entry.ItemId, StringComparison.Ordinal),
+                        () =>
+                        {
+                            slot.CombatItemId = string.Equals(slot.CombatItemId, entry.ItemId, StringComparison.Ordinal)
+                                ? string.Empty
+                                : entry.ItemId;
+                            _arenaHeroDraftInitialized = true;
+                        });
+                }
             }
 
             GUILayout.Space(8f);
@@ -9490,32 +10888,51 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawArenaHeroDraftTrinketPicker(ArenaHeroDraftSlot slot)
         {
+            DrawArenaHeroDraftTrinketFixedHeader(slot);
+            DrawArenaHeroDraftTrinketCandidates(slot);
+        }
+
+        private void DrawArenaHeroDraftTrinketFixedHeader(ArenaHeroDraftSlot slot)
+        {
             if (slot == null)
             {
                 return;
             }
 
             EnsureArenaHeroItemCatalog();
-
-            GUILayout.Label(Ui("Trinkets", "饰品"));
+            GUILayout.Label(Ui("Trinkets", "饰品"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             DrawArenaDraftSelectedItemChips(slot.TrinketIds, 2);
+            GUILayout.Space(4f);
             DrawArenaItemSearchRow(Ui("Search", "搜索"), ref _arenaHeroTrinketSearch, false);
+            GUILayout.Label(Ui("Candidates", "候选"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
+        }
+
+        private void DrawArenaHeroDraftTrinketCandidates(ArenaHeroDraftSlot slot)
+        {
+            if (slot == null)
+            {
+                return;
+            }
+
+            EnsureArenaHeroItemCatalog();
             RefreshArenaHeroItemMatchesIfNeeded(false, false);
             if (_arenaTrinketMatches.Count == 0)
             {
                 DrawWrappedLabel(Ui("No matching trinket.", "没有匹配的饰品。"));
             }
-
-            foreach (ArenaItemCatalogEntry entry in _arenaTrinketMatches)
+            else
             {
-                DrawArenaItemCatalogRow(
-                    entry,
-                    slot.TrinketIds.Contains(entry.ItemId),
-                    () =>
-                    {
-                        ToggleArenaHeroDraftTrinket(slot, entry.ItemId);
-                        _arenaHeroDraftInitialized = true;
-                    });
+                foreach (ArenaItemCatalogEntry entry in _arenaTrinketMatches)
+                {
+                    DrawArenaItemCatalogRow(
+                        entry,
+                        slot.TrinketIds.Contains(entry.ItemId),
+                        () =>
+                        {
+                            ToggleArenaHeroDraftTrinket(slot, entry.ItemId);
+                            _arenaHeroDraftInitialized = true;
+                        });
+                }
             }
 
             GUILayout.Space(8f);
@@ -9524,44 +10941,148 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawArenaHeroDraftQuirkPicker(ArenaHeroDraftSlot slot)
         {
+            DrawArenaHeroDraftQuirkFixedHeader(slot);
+            DrawArenaHeroDraftQuirkCandidates(slot);
+        }
+
+        private void DrawArenaHeroDraftQuirkFixedHeader(ArenaHeroDraftSlot slot)
+        {
             if (slot == null)
             {
                 return;
             }
 
             EnsureArenaHeroQuirkCatalog();
-
-            GUILayout.Label(Ui("Quirks", "怪癖"));
+            GUILayout.Label(Ui("Quirks", "怪癖"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             DrawWrappedLabel(Ui(
                 "Selected quirks are applied by slot after the custom Arena combat enters. Positive and negative quirks are capped at 3 each; disease/curse is capped at 1.",
                 "选中的怪癖会在自定义竞技场战斗进入后按槽位补加。正面和负面怪癖各最多 3 个；疾病/诅咒最多 1 个。"));
-
             DrawArenaSelectedQuirks(slot);
 
-            DrawArenaQuirkSection(
-                Ui("Positive Quirks", "正面怪癖"),
-                ArenaQuirkKind.Positive,
-                slot.PositiveQuirkIds,
-                ref _arenaPositiveQuirkSearch,
-                _arenaPositiveQuirkMatches,
-                3);
+            GUILayout.BeginHorizontal();
+            DrawArenaQuirkBrowseKindButton(ArenaQuirkKind.Positive, Ui("Positive", "正面"));
+            DrawArenaQuirkBrowseKindButton(ArenaQuirkKind.Negative, Ui("Negative", "负面"));
+            DrawArenaQuirkBrowseKindButton(ArenaQuirkKind.Disease, Ui("Disease / Curse", "疾病 / 诅咒"));
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            GUILayout.Space(4f);
 
-            DrawArenaQuirkSection(
-                Ui("Negative Quirks", "负面怪癖"),
-                ArenaQuirkKind.Negative,
-                slot.NegativeQuirkIds,
-                ref _arenaNegativeQuirkSearch,
-                _arenaNegativeQuirkMatches,
-                3);
+            string search = GetArenaQuirkBrowseSearch();
+            string next = null;
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Ui("Search", "搜索"), GUILayout.Width(54f));
+            next = GUILayout.TextField(search ?? string.Empty, GUILayout.Height(28f));
+            if (!string.Equals(next, search ?? string.Empty, StringComparison.Ordinal))
+            {
+                SetArenaQuirkBrowseSearch(next);
+                RefreshArenaQuirkMatchesIfNeeded(_arenaQuirkBrowseKind, true);
+            }
 
-            DrawArenaQuirkSection(
-                Ui("Disease / Curse", "疾病 / 诅咒"),
-                ArenaQuirkKind.Disease,
-                null,
-                ref _arenaDiseaseQuirkSearch,
-                _arenaDiseaseQuirkMatches,
-                1,
-                slot);
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
+            {
+                SetArenaQuirkBrowseSearch(string.Empty);
+                RefreshArenaQuirkMatchesIfNeeded(_arenaQuirkBrowseKind, true);
+            }
+
+            GUILayout.EndHorizontal();
+            GUILayout.Label(Ui("Candidates", "候选"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
+        }
+
+        private void DrawArenaQuirkBrowseKindButton(ArenaQuirkKind kind, string label)
+        {
+            bool selected = _arenaQuirkBrowseKind == kind;
+            GUIStyle style = selected ? _panelAccentButtonStyle : _panelSubButtonStyle;
+            if (GUILayout.Button(selected ? ("● " + label) : label, style, GUILayout.Height(32f), GUILayout.MinWidth(110f)))
+            {
+                if (_arenaQuirkBrowseKind != kind)
+                {
+                    _arenaQuirkBrowseKind = kind;
+                    _arenaHeroDetailScroll = Vector2.zero;
+                }
+            }
+        }
+
+        private string GetArenaQuirkBrowseSearch()
+        {
+            switch (_arenaQuirkBrowseKind)
+            {
+                case ArenaQuirkKind.Negative:
+                    return _arenaNegativeQuirkSearch;
+                case ArenaQuirkKind.Disease:
+                    return _arenaDiseaseQuirkSearch;
+                default:
+                    return _arenaPositiveQuirkSearch;
+            }
+        }
+
+        private void SetArenaQuirkBrowseSearch(string value)
+        {
+            switch (_arenaQuirkBrowseKind)
+            {
+                case ArenaQuirkKind.Negative:
+                    _arenaNegativeQuirkSearch = value ?? string.Empty;
+                    break;
+                case ArenaQuirkKind.Disease:
+                    _arenaDiseaseQuirkSearch = value ?? string.Empty;
+                    break;
+                default:
+                    _arenaPositiveQuirkSearch = value ?? string.Empty;
+                    break;
+            }
+        }
+
+        private void DrawArenaHeroDraftQuirkCandidates(ArenaHeroDraftSlot slot)
+        {
+            if (slot == null)
+            {
+                return;
+            }
+
+            EnsureArenaHeroQuirkCatalog();
+            ArenaQuirkKind kind = _arenaQuirkBrowseKind;
+            RefreshArenaQuirkMatchesIfNeeded(kind, false);
+            List<ArenaQuirkCatalogEntry> matches = kind == ArenaQuirkKind.Negative
+                ? _arenaNegativeQuirkMatches
+                : kind == ArenaQuirkKind.Disease
+                    ? _arenaDiseaseQuirkMatches
+                    : _arenaPositiveQuirkMatches;
+            List<string> selectedIds = kind == ArenaQuirkKind.Negative
+                ? slot.NegativeQuirkIds
+                : kind == ArenaQuirkKind.Disease
+                    ? null
+                    : slot.PositiveQuirkIds;
+            int maxCount = kind == ArenaQuirkKind.Disease ? 1 : 3;
+
+            if (!_arenaHeroQuirkCatalogBuilt)
+            {
+                DrawWrappedLabel(Ui("Quirk library is not loaded yet.", "怪癖库尚未加载。"));
+                return;
+            }
+
+            if (matches == null || matches.Count == 0)
+            {
+                DrawWrappedLabel(Ui("No matching quirk.", "没有匹配的怪癖。"));
+            }
+            else
+            {
+                foreach (ArenaQuirkCatalogEntry entry in matches)
+                {
+                    bool selected = kind == ArenaQuirkKind.Disease
+                        ? string.Equals(slot.DiseaseQuirkId, entry.QuirkId, StringComparison.Ordinal)
+                        : selectedIds != null && selectedIds.Contains(entry.QuirkId);
+                    DrawArenaQuirkCatalogRow(entry, selected, () =>
+                    {
+                        if (kind == ArenaQuirkKind.Disease)
+                        {
+                            slot.DiseaseQuirkId = selected ? string.Empty : entry.QuirkId;
+                            _arenaHeroDraftInitialized = true;
+                            return;
+                        }
+
+                        ToggleArenaHeroDraftQuirk(selectedIds, entry.QuirkId, maxCount, kind);
+                    });
+                }
+            }
 
             GUILayout.Space(8f);
             DrawWrappedLabel(BuildArenaHeroDraftQuirkSummary());
@@ -9689,7 +11210,7 @@ namespace DD2SteamMultiplayerHost
                 RefreshArenaQuirkMatchesIfNeeded(kind, true);
             }
 
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(58f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
             {
                 search = string.Empty;
                 RefreshArenaQuirkMatchesIfNeeded(kind, true);
@@ -9705,21 +11226,26 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
-            Rect row = GUILayoutUtility.GetRect(0f, 86f, GUILayout.ExpandWidth(true), GUILayout.Height(86f));
+            Rect row = GUILayoutUtility.GetRect(0f, 110f, GUILayout.ExpandWidth(true), GUILayout.Height(110f));
             DrawSolidRect(row, selected ? HudCurrentCardColor : HudCardColor);
+            if (selected)
+            {
+                DrawSolidRect(new Rect(row.x, row.y, 4f, row.height), PanelAccentColor);
+            }
+
             if (GUI.Button(row, GUIContent.none, GUIStyle.none))
             {
                 onClick?.Invoke();
             }
 
-            Rect icon = new Rect(row.x + 8f, row.y + 10f, 52f, 52f);
+            Rect icon = new Rect(row.x + 10f, row.y + 14f, 64f, 64f);
             DrawArenaQuirkIcon(icon, entry, entry.Kind);
 
-            GUIStyle title = CreateHudLabelStyle(13, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
-            GUI.Label(new Rect(row.x + 70f, row.y + 8f, row.width - 80f, 22f),
-                (selected ? "* " : string.Empty) + (entry.DisplayName ?? entry.QuirkId),
+            GUIStyle title = CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
+            GUI.Label(new Rect(row.x + 86f, row.y + 12f, row.width - 98f, 26f),
+                (selected ? "● " : string.Empty) + (entry.DisplayName ?? entry.QuirkId),
                 title);
-            DrawInlineDescriptionPreview(new Rect(row.x + 70f, row.y + 32f, row.width - 80f, 48f), entry.Description, 11);
+            DrawInlineDescriptionPreview(new Rect(row.x + 86f, row.y + 42f, row.width - 98f, 58f), entry.Description, 13);
         }
 
         private void DrawArenaQuirkIcon(Rect rect, ArenaQuirkCatalogEntry entry, ArenaQuirkKind fallbackKind)
@@ -9755,12 +11281,12 @@ namespace DD2SteamMultiplayerHost
             GUILayout.BeginHorizontal();
             GUILayout.Label(Ui("Equipped", "已装备"), GUILayout.Width(74f));
             string itemId = slot == null ? string.Empty : slot.CombatItemId;
-            Rect rect = GUILayoutUtility.GetRect(56f, 56f, GUILayout.Width(56f), GUILayout.Height(56f));
+            Rect rect = GUILayoutUtility.GetRect(64f, 64f, GUILayout.Width(64f), GUILayout.Height(64f));
             DrawSolidRect(rect, string.IsNullOrWhiteSpace(itemId) ? HudHostOnlyCardColor : HudTileColor);
             if (!string.IsNullOrWhiteSpace(itemId))
             {
-                DrawSprite(new Rect(rect.x + 6f, rect.y + 6f, 44f, 44f), GetItemSprite(itemId));
-                if (GUI.Button(new Rect(rect.x + 36f, rect.y + 2f, 18f, 18f), "x"))
+                DrawSprite(new Rect(rect.x + 8f, rect.y + 8f, 48f, 48f), GetItemSprite(itemId));
+                if (GUI.Button(new Rect(rect.x + 42f, rect.y + 2f, 20f, 20f), "x", _panelSubButtonStyle))
                 {
                     slot.CombatItemId = string.Empty;
                     _arenaHeroDraftInitialized = true;
@@ -9768,13 +11294,13 @@ namespace DD2SteamMultiplayerHost
             }
             else
             {
-                GUI.Label(rect, "+", CreateHudLabelStyle(12, FontStyle.Normal, PanelMutedTextColor, TextAnchor.MiddleCenter));
+                GUI.Label(rect, "+", CreateHudLabelStyle(16, FontStyle.Bold, PanelMutedTextColor, TextAnchor.MiddleCenter));
             }
 
             GUILayout.Space(8f);
             GUILayout.Label(string.IsNullOrWhiteSpace(itemId)
                 ? Ui("[none]", "[无]")
-                : GetLocalizedItemDisplayName(itemId, itemId));
+                : GetLocalizedItemDisplayName(itemId, itemId), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
             GUILayout.Space(6f);
@@ -9791,7 +11317,7 @@ namespace DD2SteamMultiplayerHost
                 RefreshArenaHeroItemMatchesIfNeeded(combatItem, true);
             }
 
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(58f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
             {
                 search = string.Empty;
                 RefreshArenaHeroItemMatchesIfNeeded(combatItem, true);
@@ -9806,12 +11332,12 @@ namespace DD2SteamMultiplayerHost
             for (int i = 0; i < maxCount; i++)
             {
                 string itemId = itemIds != null && i < itemIds.Count ? itemIds[i] : string.Empty;
-                Rect rect = GUILayoutUtility.GetRect(50f, 50f, GUILayout.Width(50f), GUILayout.Height(50f));
+                Rect rect = GUILayoutUtility.GetRect(64f, 64f, GUILayout.Width(64f), GUILayout.Height(64f));
                 DrawSolidRect(rect, string.IsNullOrWhiteSpace(itemId) ? HudHostOnlyCardColor : HudTileColor);
                 if (!string.IsNullOrWhiteSpace(itemId))
                 {
-                    DrawSprite(new Rect(rect.x + 5f, rect.y + 5f, 40f, 40f), GetItemSprite(itemId));
-                    if (GUI.Button(new Rect(rect.x + 30f, rect.y + 1f, 18f, 18f), "x") && itemIds != null && i < itemIds.Count)
+                    DrawSprite(new Rect(rect.x + 8f, rect.y + 8f, 48f, 48f), GetItemSprite(itemId));
+                    if (GUI.Button(new Rect(rect.x + 42f, rect.y + 2f, 20f, 20f), "x", _panelSubButtonStyle) && itemIds != null && i < itemIds.Count)
                     {
                         itemIds.RemoveAt(i);
                         _arenaHeroDraftInitialized = true;
@@ -9819,10 +11345,10 @@ namespace DD2SteamMultiplayerHost
                 }
                 else
                 {
-                    GUI.Label(rect, "+", CreateHudLabelStyle(10, FontStyle.Normal, PanelMutedTextColor, TextAnchor.MiddleCenter));
+                    GUI.Label(rect, "+", CreateHudLabelStyle(16, FontStyle.Bold, PanelMutedTextColor, TextAnchor.MiddleCenter));
                 }
 
-                GUILayout.Space(6f);
+                GUILayout.Space(8f);
             }
 
             GUILayout.EndHorizontal();
@@ -9835,8 +11361,13 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
-            Rect row = GUILayoutUtility.GetRect(0f, 92f, GUILayout.ExpandWidth(true), GUILayout.Height(92f));
+            Rect row = GUILayoutUtility.GetRect(0f, 110f, GUILayout.ExpandWidth(true), GUILayout.Height(110f));
             DrawSolidRect(row, selected ? HudCurrentCardColor : HudCardColor);
+            if (selected)
+            {
+                DrawSolidRect(new Rect(row.x, row.y, 4f, row.height), PanelAccentColor);
+            }
+
             string description = string.IsNullOrWhiteSpace(entry.Description)
                 ? GetLocalizedItemDescription(entry.ItemId)
                 : entry.Description;
@@ -9850,14 +11381,14 @@ namespace DD2SteamMultiplayerHost
                 onClick?.Invoke();
             }
 
-            Rect icon = new Rect(row.x + 8f, row.y + 10f, 52f, 52f);
+            Rect icon = new Rect(row.x + 10f, row.y + 14f, 64f, 64f);
             DrawSolidRect(icon, new Color(0.05f, 0.055f, 0.06f, 1f));
             DrawSprite(icon, GetItemSprite(entry.ItemId));
-            GUIStyle title = CreateHudLabelStyle(13, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
-            GUI.Label(new Rect(row.x + 70f, row.y + 8f, row.width - 80f, 22f),
-                (selected ? "* " : string.Empty) + (entry.DisplayName ?? entry.ItemId),
+            GUIStyle title = CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
+            GUI.Label(new Rect(row.x + 86f, row.y + 12f, row.width - 98f, 26f),
+                (selected ? "● " : string.Empty) + (entry.DisplayName ?? entry.ItemId),
                 title);
-            DrawInlineDescriptionPreview(new Rect(row.x + 70f, row.y + 32f, row.width - 80f, 54f), previewDescription, 11);
+            DrawInlineDescriptionPreview(new Rect(row.x + 86f, row.y + 42f, row.width - 98f, 58f), previewDescription, 13);
         }
 
         private void DrawInlineDescriptionPreview(Rect rect, string description, int fontSize)
@@ -9903,23 +11434,36 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawArenaHeroStartBuffPicker()
         {
-            EnsureArenaHeroStartEffectCatalog();
+            DrawArenaHeroStartBuffFixedHeader();
+            DrawArenaHeroStartBuffCandidates();
+        }
 
-            GUILayout.Label(Ui("Hero Start Buffs", "英雄开局 Buff"));
+        private void DrawArenaHeroStartBuffFixedHeader()
+        {
+            EnsureArenaHeroStartEffectCatalog();
+            GUILayout.Label(Ui("Hero Start Buffs", "英雄开局 Buff"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             DrawWrappedLabel(Ui(
                 "Selected effects are written to hero_test_start_effect and applied to all four heroes when the Arena draft is launched.",
                 "选中的效果会写入 hero_test_start_effect，在竞技场草案启动时套给四名英雄。"));
-
             DrawArenaSelectedHeroStartEffects();
             DrawArenaEffectSearchRow();
+            GUILayout.Label(Ui("Candidates", "候选"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
+        }
+
+        private void DrawArenaHeroStartBuffCandidates()
+        {
+            EnsureArenaHeroStartEffectCatalog();
             RefreshArenaHeroStartEffectMatchesIfNeeded(false);
             if (!_arenaHeroStartEffectCatalogBuilt)
             {
                 DrawWrappedLabel(Ui("Effect library is not loaded yet.", "效果库尚未加载。"));
+                return;
             }
-            else if (_arenaHeroStartEffectMatches.Count == 0)
+
+            if (_arenaHeroStartEffectMatches.Count == 0)
             {
                 DrawWrappedLabel(Ui("No matching effect.", "没有匹配的效果。"));
+                return;
             }
 
             foreach (ArenaEffectCatalogEntry entry in _arenaHeroStartEffectMatches)
@@ -9930,24 +11474,36 @@ namespace DD2SteamMultiplayerHost
 
         private void DrawArenaEnemyOrdainmentPicker()
         {
-            EnsureArenaBossModifierCatalog();
+            DrawArenaEnemyOrdainmentFixedHeader();
+            DrawArenaEnemyOrdainmentCandidates();
+        }
 
-            GUILayout.Label(Ui("Enemy Ordainment", "敌方赐福"));
+        private void DrawArenaEnemyOrdainmentFixedHeader()
+        {
+            EnsureArenaBossModifierCatalog();
+            GUILayout.Label(Ui("Enemy Ordainment", "敌方赐福"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
             DrawWrappedLabel(Ui(
                 "This writes run_test_boss_modifier. It only applies when the selected BossModifier is valid for the spawned enemy class.",
                 "这里会写入 run_test_boss_modifier。只有当所选 BossModifier 对生成的敌人类型有效时才会生效。"));
-
             DrawWrappedLabel(Ui("Selected: ", "当前：") +
                 (string.IsNullOrWhiteSpace(_arenaBossModifierId)
                     ? Ui("[none]", "[无]")
                     : GetArenaBossModifierDisplayName(_arenaBossModifierId)));
             DrawArenaBossModifierSearchRow();
+            GUILayout.Label(Ui("Candidates", "候选"), CreateHudLabelStyle(15, FontStyle.Bold, PanelTextColor, TextAnchor.MiddleLeft));
+        }
+
+        private void DrawArenaEnemyOrdainmentCandidates()
+        {
+            EnsureArenaBossModifierCatalog();
             RefreshArenaBossModifierMatchesIfNeeded(false);
             if (!_arenaBossModifierCatalogBuilt)
             {
                 DrawWrappedLabel(Ui("Boss modifier library is not loaded yet.", "BossModifier 库尚未加载。"));
+                return;
             }
-            else if (_arenaBossModifierMatches.Count == 0)
+
+            if (_arenaBossModifierMatches.Count == 0)
             {
                 DrawWrappedLabel(Ui("No matching modifier.", "没有匹配的赐福。"));
             }
@@ -9974,7 +11530,7 @@ namespace DD2SteamMultiplayerHost
                 GUILayout.BeginHorizontal();
                 DrawWrappedLabel("#" + (i + 1) + " " +
                     (entry == null ? effectId : entry.DisplayName));
-                if (GUILayout.Button("X", GUILayout.Width(28f), GUILayout.Height(22f)))
+                if (GUILayout.Button("X", _panelSubButtonStyle, GUILayout.Width(34f), GUILayout.Height(30f)))
                 {
                     _arenaHeroStartEffectIds.RemoveAt(i);
                     i--;
@@ -9995,7 +11551,7 @@ namespace DD2SteamMultiplayerHost
                 RefreshArenaHeroStartEffectMatchesIfNeeded(true);
             }
 
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(58f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
             {
                 _arenaHeroStartEffectSearch = string.Empty;
                 RefreshArenaHeroStartEffectMatchesIfNeeded(true);
@@ -10003,7 +11559,7 @@ namespace DD2SteamMultiplayerHost
 
             bool oldEnabled = GUI.enabled;
             GUI.enabled = oldEnabled && _arenaHeroStartEffectIds.Count > 0;
-            if (GUILayout.Button(Ui("Clear Selected", "清空已选"), GUILayout.Width(106f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear Selected", "清空已选"), _panelSubButtonStyle, GUILayout.Width(124f), GUILayout.Height(32f)))
             {
                 _arenaHeroStartEffectIds.Clear();
                 _arenaHeroDraftInitialized = true;
@@ -10021,18 +11577,23 @@ namespace DD2SteamMultiplayerHost
             }
 
             bool selected = _arenaHeroStartEffectIds.Contains(entry.EffectId);
-            Rect row = GUILayoutUtility.GetRect(0f, 86f, GUILayout.ExpandWidth(true), GUILayout.Height(86f));
+            Rect row = GUILayoutUtility.GetRect(0f, 100f, GUILayout.ExpandWidth(true), GUILayout.Height(100f));
             DrawSolidRect(row, selected ? HudCurrentCardColor : HudCardColor);
+            if (selected)
+            {
+                DrawSolidRect(new Rect(row.x, row.y, 4f, row.height), PanelAccentColor);
+            }
+
             if (GUI.Button(row, GUIContent.none, GUIStyle.none))
             {
                 ToggleArenaHeroStartEffect(entry.EffectId);
             }
 
-            GUIStyle title = CreateHudLabelStyle(13, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
-            GUI.Label(new Rect(row.x + 10f, row.y + 8f, row.width - 20f, 22f),
-                (selected ? "* " : string.Empty) + (entry.DisplayName ?? entry.EffectId),
+            GUIStyle title = CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
+            GUI.Label(new Rect(row.x + 12f, row.y + 10f, row.width - 24f, 26f),
+                (selected ? "● " : string.Empty) + (entry.DisplayName ?? entry.EffectId),
                 title);
-            DrawInlineDescriptionPreview(new Rect(row.x + 10f, row.y + 32f, row.width - 20f, 48f), entry.Description, 11);
+            DrawInlineDescriptionPreview(new Rect(row.x + 12f, row.y + 40f, row.width - 24f, 52f), entry.Description, 13);
         }
 
         private void DrawArenaBossModifierSearchRow()
@@ -10046,7 +11607,7 @@ namespace DD2SteamMultiplayerHost
                 RefreshArenaBossModifierMatchesIfNeeded(true);
             }
 
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(58f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
             {
                 _arenaBossModifierSearch = string.Empty;
                 RefreshArenaBossModifierMatchesIfNeeded(true);
@@ -10058,7 +11619,7 @@ namespace DD2SteamMultiplayerHost
         private void DrawArenaBossModifierNoneRow()
         {
             bool selected = string.IsNullOrWhiteSpace(_arenaBossModifierId);
-            Rect row = GUILayoutUtility.GetRect(0f, 36f, GUILayout.ExpandWidth(true), GUILayout.Height(36f));
+            Rect row = GUILayoutUtility.GetRect(0f, 44f, GUILayout.ExpandWidth(true), GUILayout.Height(44f));
             DrawSolidRect(row, selected ? HudCurrentCardColor : HudCardColor);
             if (GUI.Button(row, GUIContent.none, GUIStyle.none))
             {
@@ -10067,9 +11628,9 @@ namespace DD2SteamMultiplayerHost
             }
 
             GUI.Label(
-                new Rect(row.x + 8f, row.y + 8f, row.width - 16f, 18f),
-                selected ? Ui("* No forced ordainment", "* 不强制赐福") : Ui("No forced ordainment", "不强制赐福"),
-                CreateHudLabelStyle(11, FontStyle.Bold, Color.white, TextAnchor.UpperLeft));
+                new Rect(row.x + 10f, row.y + 10f, row.width - 20f, 24f),
+                selected ? Ui("● No forced ordainment", "● 不强制赐福") : Ui("No forced ordainment", "不强制赐福"),
+                CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft));
         }
 
         private void DrawArenaBossModifierCatalogRow(ArenaBossModifierCatalogEntry entry)
@@ -10080,19 +11641,24 @@ namespace DD2SteamMultiplayerHost
             }
 
             bool selected = string.Equals(_arenaBossModifierId, entry.ModifierId, StringComparison.Ordinal);
-            Rect row = GUILayoutUtility.GetRect(0f, 86f, GUILayout.ExpandWidth(true), GUILayout.Height(86f));
+            Rect row = GUILayoutUtility.GetRect(0f, 100f, GUILayout.ExpandWidth(true), GUILayout.Height(100f));
             DrawSolidRect(row, selected ? HudCurrentCardColor : HudCardColor);
+            if (selected)
+            {
+                DrawSolidRect(new Rect(row.x, row.y, 4f, row.height), PanelAccentColor);
+            }
+
             if (GUI.Button(row, GUIContent.none, GUIStyle.none))
             {
                 _arenaBossModifierId = entry.ModifierId;
                 _arenaHeroDraftInitialized = true;
             }
 
-            GUIStyle title = CreateHudLabelStyle(13, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
-            GUI.Label(new Rect(row.x + 10f, row.y + 8f, row.width - 20f, 22f),
-                (selected ? "* " : string.Empty) + (entry.DisplayName ?? entry.ModifierId),
+            GUIStyle title = CreateHudLabelStyle(15, FontStyle.Bold, Color.white, TextAnchor.UpperLeft);
+            GUI.Label(new Rect(row.x + 12f, row.y + 10f, row.width - 24f, 26f),
+                (selected ? "● " : string.Empty) + (entry.DisplayName ?? entry.ModifierId),
                 title);
-            DrawInlineDescriptionPreview(new Rect(row.x + 10f, row.y + 32f, row.width - 20f, 48f), entry.Description, 11);
+            DrawInlineDescriptionPreview(new Rect(row.x + 12f, row.y + 40f, row.width - 24f, 52f), entry.Description, 13);
         }
 
         private void ToggleArenaHeroStartEffect(string effectId)
@@ -10673,7 +12239,8 @@ namespace DD2SteamMultiplayerHost
                 !string.IsNullOrWhiteSpace(definition.m_Id) &&
                 definition.m_Chance > 0f &&
                 definition.Tags != null &&
-                definition.Tags.Contains("monster");
+                (definition.Tags.Contains("monster") ||
+                 string.Equals(definition.m_Id, "ambush_monsters", StringComparison.Ordinal));
         }
 
         private BattleModifierDefinition RollArenaBattleModifierIndependentOfRun(BattleConfigurationDefinition battleConfiguration)
@@ -12149,7 +13716,7 @@ namespace DD2SteamMultiplayerHost
                 ActorInstance actor = party[i];
                 slot.ActorId = (actor.ActorDataId ?? string.Empty).Trim();
                 slot.PathId = actor.ActorDataPath == null ? string.Empty : (actor.ActorDataPath.Id ?? string.Empty).Trim();
-                slot.SkillIds.AddRange(GetArenaEquippedSkillIds(actor).Take(5));
+                slot.SkillIds.AddRange(GetArenaEquippedSkillIds(actor).Take(IsArenaAbominationActor(slot.ActorId) ? AbominationMaxSkillsWithTransform : ArenaDefaultMaxSkills));
                 slot.CombatItemId = GetArenaFirstInventoryItemId(actor.GetCombatSkillInventory(), ItemType.COMBAT);
                 slot.TrinketIds.AddRange(GetArenaInventoryItemIds(actor.GetTrinketInventory(), ItemType.TRINKET).Take(2));
                 ImportArenaHeroDraftQuirks(slot, actor);
@@ -12412,15 +13979,66 @@ namespace DD2SteamMultiplayerHost
             {
                 slot.SkillIds.RemoveAt(existingIndex);
                 _arenaHeroDraftInitialized = true;
+
+                // If removing a transform skill, also remove the paired transform.
+                if (IsArenaAbominationActor(slot.ActorId) && IsArenaAbominationTransformSkill(skillId))
+                {
+                    List<string> removeAvailable = GetArenaDraftAvailableSkillIds(slot.ActorId, slot.PathId);
+                    string removePairedId = FindPairedTransformSkillId(skillId, removeAvailable);
+                    if (!string.IsNullOrWhiteSpace(removePairedId))
+                    {
+                        int removePairedIndex = FindArenaHeroDraftSkillIndex(slot, removePairedId);
+                        if (removePairedIndex >= 0)
+                        {
+                            slot.SkillIds.RemoveAt(removePairedIndex);
+                        }
+                    }
+                }
+
                 return;
             }
 
-            if (slot.SkillIds.Count >= 5)
+            int maxSkills = GetArenaMaxSkillCountForSlot(slot);
+            bool isAbomination = IsArenaAbominationActor(slot.ActorId);
+            bool isTransform = isAbomination && IsArenaAbominationTransformSkill(skillId);
+
+            if (isAbomination &&
+                IsArenaAbominationBeastSkill(skillId) &&
+                !HasArenaAbominationTransformSkill(slot.SkillIds))
+            {
+                return;
+            }
+
+            // Determine how many slots we need: 1 for the skill itself, +1 if it's a
+            // transform skill that needs its pair added too.
+            int pairedIndex = -1;
+            string pairedId = null;
+            if (isTransform)
+            {
+                List<string> available = GetArenaDraftAvailableSkillIds(slot.ActorId, slot.PathId);
+                pairedId = FindPairedTransformSkillId(skillId, available);
+                if (!string.IsNullOrWhiteSpace(pairedId))
+                {
+                    pairedIndex = FindArenaHeroDraftSkillIndex(slot, pairedId);
+                }
+            }
+
+            int slotsNeeded = (isTransform && pairedIndex < 0 && !string.IsNullOrWhiteSpace(pairedId)) ? 2 : 1;
+
+            // Remove from the end to make room.
+            while (slot.SkillIds.Count + slotsNeeded > maxSkills && slot.SkillIds.Count > 0)
             {
                 slot.SkillIds.RemoveAt(slot.SkillIds.Count - 1);
             }
 
             slot.SkillIds.Add(skillId);
+
+            // Auto-add the paired transform skill if not already present.
+            if (isTransform && pairedIndex < 0 && !string.IsNullOrWhiteSpace(pairedId))
+            {
+                slot.SkillIds.Add(pairedId);
+            }
+
             _arenaHeroDraftInitialized = true;
         }
 
@@ -12459,6 +14077,11 @@ namespace DD2SteamMultiplayerHost
 
             List<string> available = GetArenaDraftAvailableSkillIds(slot.ActorId, slot.PathId);
             HashSet<string> availableSet = new HashSet<string>(available, StringComparer.Ordinal);
+
+            bool isAbomination = IsArenaAbominationActor(slot.ActorId);
+            bool hasTransform = isAbomination && HasArenaAbominationTransformSkill(slot.SkillIds);
+            int maxSkills = isAbomination ? AbominationMaxSkillsWithTransform : ArenaDefaultMaxSkills;
+
             List<string> normalized = new List<string>();
             HashSet<string> normalizedBaseSkillIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (string skillId in slot.SkillIds)
@@ -12473,34 +14096,121 @@ namespace DD2SteamMultiplayerHost
                     continue;
                 }
 
+                if (isAbomination && !hasTransform && IsArenaAbominationBeastSkill(id))
+                {
+                    continue;
+                }
+
                 normalized.Add(id);
                 normalizedBaseSkillIds.Add(baseSkillId);
-                if (normalized.Count >= 5)
+                if (normalized.Count >= maxSkills)
                 {
                     break;
                 }
             }
 
-            if (fillMissing)
-            {
-                foreach (string skillId in available)
-                {
-                    if (normalized.Count >= 5)
-                    {
-                        break;
-                    }
+if (fillMissing)
+{
+if (isAbomination)
+{
+// Phase 1: fill row 1 (indices 0-4) with human skills + abm_transform.
+foreach (string skillId in available)
+{
+if (normalized.Count >= 5)
+{
+break;
+}
 
-                    string baseSkillId = StripArenaSkillUpgradeSuffix(skillId);
-                    if (!normalizedBaseSkillIds.Contains(baseSkillId))
-                    {
-                        normalized.Add(skillId);
-                        normalizedBaseSkillIds.Add(baseSkillId);
-                    }
-                }
-            }
+string baseSkillId = StripArenaSkillUpgradeSuffix(skillId);
+if (normalizedBaseSkillIds.Contains(baseSkillId))
+{
+continue;
+}
+
+bool isHumanTransform = IsArenaAbominationHumanTransformSkill(skillId);
+bool isBeastTransform = IsArenaAbominationBeastTransformSkill(skillId);
+bool isBeast = IsArenaAbominationBeastSkill(skillId);
+
+// Beast transform and beast skills go to row 2, not row 1.
+if (isBeastTransform || isBeast)
+{
+continue;
+}
+
+if (isHumanTransform || !isBeast)
+{
+normalized.Add(skillId);
+normalizedBaseSkillIds.Add(baseSkillId);
+}
+}
+
+// Phase 2: if abm_transform was added, auto-add its paired abm_revert to row 2.
+string humanTransformId = null;
+foreach (string id in normalized)
+{
+if (IsArenaAbominationHumanTransformSkill(id))
+{
+humanTransformId = id;
+break;
+}
+}
+
+if (!string.IsNullOrWhiteSpace(humanTransformId))
+{
+string pairedRevertId = FindPairedTransformSkillId(humanTransformId, available);
+if (!string.IsNullOrWhiteSpace(pairedRevertId))
+{
+string revertBase = StripArenaSkillUpgradeSuffix(pairedRevertId);
+if (!normalizedBaseSkillIds.Contains(revertBase) && normalized.Count < maxSkills)
+{
+normalized.Add(pairedRevertId);
+normalizedBaseSkillIds.Add(revertBase);
+}
+}
+}
+
+// Phase 3: fill row 2 (indices 5-9) with remaining beast skills.
+foreach (string skillId in available)
+{
+if (normalized.Count >= maxSkills)
+{
+break;
+}
+
+string baseSkillId = StripArenaSkillUpgradeSuffix(skillId);
+if (normalizedBaseSkillIds.Contains(baseSkillId))
+{
+continue;
+}
+
+if (IsArenaAbominationBeastSkill(skillId))
+{
+normalized.Add(skillId);
+normalizedBaseSkillIds.Add(baseSkillId);
+}
+}
+}
+else
+{
+foreach (string skillId in available)
+{
+if (normalized.Count >= maxSkills)
+{
+break;
+}
+
+string baseSkillId = StripArenaSkillUpgradeSuffix(skillId);
+if (!normalizedBaseSkillIds.Contains(baseSkillId))
+{
+normalized.Add(skillId);
+normalizedBaseSkillIds.Add(baseSkillId);
+}
+}
+}
+}
 
             slot.SkillIds.Clear();
-            slot.SkillIds.AddRange(normalized.Take(5));
+            slot.SkillIds.AddRange(normalized.Take(maxSkills));
         }
 
         private bool EnsureArenaHeroCatalog()
@@ -12696,17 +14406,7 @@ namespace DD2SteamMultiplayerHost
                     continue;
                 }
 
-                bool valid = false;
-                try
-                {
-                    valid = path.GetIsValidForActorDataClass(actorClass);
-                }
-                catch
-                {
-                    valid = false;
-                }
-
-                if (valid && seen.Add(path.Id))
+                if (IsArenaPathValidForActorClass(path, actorClass) && seen.Add(path.Id))
                 {
                     paths.Add(path);
                 }
@@ -12725,6 +14425,83 @@ namespace DD2SteamMultiplayerHost
                 return order != 0 ? order : string.Compare(left.Id, right.Id, StringComparison.Ordinal);
             });
             return paths;
+        }
+
+        /// <summary>
+        /// Stricter than <see cref="ActorDataPath.GetIsValidForActorDataClass"/>:
+        /// the game method lets m_ActorClassTags overwrite m_ActorClassIds, so other heroes'
+        /// wanderer paths (same localized name) can appear for the current class.
+        /// Prefer explicit class-id binding when present.
+        /// </summary>
+        private static bool IsArenaPathValidForActorClass(ActorDataPath path, ActorDataClass actorClass)
+        {
+            if (path == null || actorClass == null)
+            {
+                return false;
+            }
+
+            // Public API: true only when m_ActorClassIds is non-empty and contains this class.
+            if (path.GetIsValidForActorClassId(actorClass.Id))
+            {
+                return true;
+            }
+
+            IReadOnlyList<string> classIds = GetArenaPathActorClassIds(path);
+            if (classIds != null && classIds.Count > 0)
+            {
+                // Bound to other class id(s). Do not admit via tag overwrite.
+                return false;
+            }
+
+            IReadOnlyList<string> classTags = GetArenaPathActorClassTags(path);
+            if (classTags == null || classTags.Count == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                return classTags.ContainsAny(actorClass.GetPotentialTags());
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static IReadOnlyList<string> GetArenaPathActorClassIds(ActorDataPath path)
+        {
+            return GetArenaPathStringListField(path, "m_ActorClassIds");
+        }
+
+        private static IReadOnlyList<string> GetArenaPathActorClassTags(ActorDataPath path)
+        {
+            return GetArenaPathStringListField(path, "m_ActorClassTags");
+        }
+
+        private static IReadOnlyList<string> GetArenaPathStringListField(ActorDataPath path, string fieldName)
+        {
+            if (path == null || string.IsNullOrWhiteSpace(fieldName))
+            {
+                return null;
+            }
+
+            try
+            {
+                FieldInfo field = typeof(ActorDataPath).GetField(
+                    fieldName,
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (field == null)
+                {
+                    return null;
+                }
+
+                return field.GetValue(path) as IReadOnlyList<string>;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static string GetArenaDraftPathDisplayName(string pathId, string actorId)
@@ -13062,6 +14839,180 @@ namespace DD2SteamMultiplayerHost
             return IsArenaSkillUpgrade(id) ? id.Substring(0, id.Length - 2) : id;
         }
 
+        private const string AbominationActorId = "abomination";
+        private const int AbominationMaxSkillsWithTransform = 10;
+        private const int ArenaDefaultMaxSkills = 5;
+        private static readonly string[] AbominationTransformPrefixes = { "abm_transform", "abm_revert" };
+private const string AbominationHumanTransformPrefix = "abm_transform";
+private const string AbominationBeastTransformPrefix = "abm_revert";
+        private static readonly string[] AbominationBeastSkillPrefixes = { "abm_rake", "abm_rage", "abm_maul", "abm_slam", "abm_howl" };
+
+        private static bool IsArenaAbominationActor(string actorId)
+        {
+            return !string.IsNullOrWhiteSpace(actorId) &&
+                string.Equals(actorId.Trim(), AbominationActorId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsArenaAbominationTransformSkill(string skillId)
+        {
+            if (string.IsNullOrWhiteSpace(skillId))
+            {
+                return false;
+            }
+
+            string id = skillId.Trim();
+            foreach (string prefix in AbominationTransformPrefixes)
+            {
+                if (id.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsArenaAbominationBeastSkill(string skillId)
+        {
+            if (string.IsNullOrWhiteSpace(skillId))
+            {
+                return false;
+            }
+
+            string id = StripArenaSkillUpgradeSuffix(skillId.Trim());
+            foreach (string prefix in AbominationBeastSkillPrefixes)
+            {
+                if (id.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasArenaAbominationTransformSkill(List<string> skillIds)
+        {
+            if (skillIds == null || skillIds.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (string skillId in skillIds)
+            {
+                if (IsArenaAbominationTransformSkill(skillId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Returns true if the skill id starts with the human-side transform prefix (abm_transform).
+        /// </summary>
+        private static bool IsArenaAbominationHumanTransformSkill(string skillId)
+        {
+            if (string.IsNullOrWhiteSpace(skillId))
+            {
+                return false;
+            }
+
+            string id = StripArenaSkillUpgradeSuffix(skillId.Trim());
+            return id.StartsWith(AbominationHumanTransformPrefix, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Returns true if the skill id starts with the beast-side transform prefix (abm_revert).
+        /// </summary>
+        private static bool IsArenaAbominationBeastTransformSkill(string skillId)
+        {
+            if (string.IsNullOrWhiteSpace(skillId))
+            {
+                return false;
+            }
+
+            string id = StripArenaSkillUpgradeSuffix(skillId.Trim());
+            return id.StartsWith(AbominationBeastTransformPrefix, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Given a transform skill id (e.g. abm_transform or abm_transform_u), find the paired
+        /// transform skill from the available skill list. abm_transform pairs with abm_revert
+        /// and vice-versa. Preserves the upgrade suffix.
+        /// </summary>
+        private static string FindPairedTransformSkillId(string skillId, List<string> availableSkillIds)
+        {
+            if (string.IsNullOrWhiteSpace(skillId) || availableSkillIds == null || availableSkillIds.Count == 0)
+            {
+                return null;
+            }
+
+            string id = skillId.Trim();
+            bool upgraded = IsArenaSkillUpgrade(id);
+            string baseId = StripArenaSkillUpgradeSuffix(id);
+
+            string targetPrefix;
+            if (baseId.StartsWith(AbominationHumanTransformPrefix, StringComparison.Ordinal))
+            {
+                targetPrefix = AbominationBeastTransformPrefix;
+            }
+            else if (baseId.StartsWith(AbominationBeastTransformPrefix, StringComparison.Ordinal))
+            {
+                targetPrefix = AbominationHumanTransformPrefix;
+            }
+            else
+            {
+                return null;
+            }
+
+            string targetUpgraded = targetPrefix + "_u";
+            string targetNormal = targetPrefix;
+
+            if (upgraded && availableSkillIds.Contains(targetUpgraded))
+            {
+                return targetUpgraded;
+            }
+
+            if (availableSkillIds.Contains(targetNormal))
+            {
+                return targetNormal;
+            }
+
+            // Fallback: search by prefix in case the exact id differs.
+            foreach (string available in availableSkillIds)
+            {
+                string availBase = StripArenaSkillUpgradeSuffix(available);
+                if (availBase.StartsWith(targetPrefix, StringComparison.Ordinal))
+                {
+                    return upgraded && IsArenaSkillUpgrade(available) ? available : (IsArenaSkillUpgrade(available) ? StripArenaSkillUpgradeSuffix(available) : available);
+                }
+            }
+
+            return null;
+        }
+
+        private static int GetArenaMaxSkillCount(string actorId, List<string> currentSkillIds)
+        {
+            if (!IsArenaAbominationActor(actorId))
+            {
+                return ArenaDefaultMaxSkills;
+            }
+
+            return AbominationMaxSkillsWithTransform;
+        }
+
+        private static int GetArenaMaxSkillCountForSlot(ArenaHeroDraftSlot slot)
+        {
+            if (slot == null || string.IsNullOrWhiteSpace(slot.ActorId))
+            {
+                return ArenaDefaultMaxSkills;
+            }
+
+            return GetArenaMaxSkillCount(slot.ActorId, slot.SkillIds);
+        }
+
         private string BuildArenaHeroDraftSlotTooltip(ArenaHeroDraftSlot slot)
         {
             if (slot == null)
@@ -13234,9 +15185,10 @@ namespace DD2SteamMultiplayerHost
                 }
 
                 NormalizeArenaHeroDraftSkills(slot, false);
-                if (slot.SkillIds.Count < 1 || slot.SkillIds.Count > 5)
+                int maxSkills = GetArenaMaxSkillCount(actorId, slot.SkillIds);
+                if (slot.SkillIds.Count < 1 || slot.SkillIds.Count > maxSkills)
                 {
-                    error = "slot " + (i + 1) + " needs 1-5 skills; found " + slot.SkillIds.Count + ".";
+                    error = "slot " + (i + 1) + " needs 1-" + maxSkills + " skills; found " + slot.SkillIds.Count + ".";
                     return false;
                 }
 
@@ -13383,24 +15335,24 @@ namespace DD2SteamMultiplayerHost
             GUILayout.EndScrollView();
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Ui("Use Single", "使用单场"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Use Single", "使用单场"), _panelAccentButtonStyle, GUILayout.Height(34f)))
             {
                 _arenaBattleConfigId = entry.Id;
                 _arenaBattleSequenceIds.Clear();
                 _arenaBattlePresetBrowserVisible = false;
             }
 
-            if (GUILayout.Button(Ui("Queue Wave", "加入单波"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Queue Wave", "加入单波"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 AddArenaBattleSequenceId(entry.Id);
             }
 
-            if (GUILayout.Button(Ui("Queue Chain", "加入连战"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Queue Chain", "加入连战"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 AddArenaBattlePresetChainToSequence(entry);
             }
 
-            if (GUILayout.Button(Ui("Close", "关闭"), GUILayout.Height(28f)))
+            if (GUILayout.Button(Ui("Close", "关闭"), _panelSubButtonStyle, GUILayout.Height(34f)))
             {
                 _arenaBattlePresetBrowserVisible = false;
             }
@@ -14165,7 +16117,7 @@ namespace DD2SteamMultiplayerHost
             GUILayout.FlexibleSpace();
             GUILayout.Label(_arenaBattleSequenceIds.Count == 0 ? Ui("single selected preset", "当前单场预设") : _arenaBattleSequenceIds.Count + Ui(" wave(s)", " 波"));
             GUI.enabled = _arenaBattleSequenceIds.Count > 0;
-            if (GUILayout.Button(Ui("Clear", "清空"), GUILayout.Width(64f), GUILayout.Height(24f)))
+            if (GUILayout.Button(Ui("Clear", "清空"), _panelSubButtonStyle, GUILayout.Width(72f), GUILayout.Height(32f)))
             {
                 _arenaBattleSequenceIds.Clear();
             }
@@ -14207,7 +16159,7 @@ namespace DD2SteamMultiplayerHost
             GUILayout.Label("#" + (index + 1), GUILayout.Width(28f));
             GUILayout.Label(TrimPanelText((battleId ?? "[battle]") + " | " + summary, 92));
             GUI.enabled = index > 0;
-            if (GUILayout.Button(Ui("Up", "上移"), GUILayout.Width(42f), GUILayout.Height(22f)))
+            if (GUILayout.Button(Ui("Up", "上移"), _panelSubButtonStyle, GUILayout.Width(52f), GUILayout.Height(30f)))
             {
                 string tmp = _arenaBattleSequenceIds[index - 1];
                 _arenaBattleSequenceIds[index - 1] = _arenaBattleSequenceIds[index];
@@ -14215,7 +16167,7 @@ namespace DD2SteamMultiplayerHost
             }
 
             GUI.enabled = index < _arenaBattleSequenceIds.Count - 1;
-            if (GUILayout.Button(Ui("Down", "下移"), GUILayout.Width(54f), GUILayout.Height(22f)))
+            if (GUILayout.Button(Ui("Down", "下移"), _panelSubButtonStyle, GUILayout.Width(64f), GUILayout.Height(30f)))
             {
                 string tmp = _arenaBattleSequenceIds[index + 1];
                 _arenaBattleSequenceIds[index + 1] = _arenaBattleSequenceIds[index];
@@ -14223,7 +16175,7 @@ namespace DD2SteamMultiplayerHost
             }
 
             GUI.enabled = true;
-            if (GUILayout.Button("X", GUILayout.Width(28f), GUILayout.Height(22f)))
+            if (GUILayout.Button("X", _panelSubButtonStyle, GUILayout.Width(34f), GUILayout.Height(30f)))
             {
                 _arenaBattleSequenceIds.RemoveAt(index);
             }
@@ -14341,38 +16293,27 @@ namespace DD2SteamMultiplayerHost
             }
         }
 
-        private void DrawArenaHeroDraftSummaryLight()
-        {
-            bool ready = TryGetArenaHeroDraftForLaunch(out _, out _, out _, out string error);
-            DrawArenaValidationLine("Party hero draft", ready, ready ? BuildArenaDraftReadySummary(_arenaHeroDraftSlots) : error);
-            bool enemyReady = !HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots) ||
-                TryGetArenaEnemyHeroDraftForLaunch(out _, out _, out _, out error);
-            DrawArenaValidationLine(
-                "Enemy hero draft",
-                enemyReady,
-                !HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots)
-                    ? "[battle config enemies]"
-                    : (enemyReady ? BuildArenaDraftReadySummary(_arenaEnemyHeroDraftSlots) : error));
-            DrawWrappedLabel("  Start effects: " +
-                (_arenaHeroStartEffectIds.Count == 0
-                    ? "[none]"
-                    : string.Join(", ", _arenaHeroStartEffectIds.Take(4).ToArray()) +
-                      (_arenaHeroStartEffectIds.Count > 4 ? " +" + (_arenaHeroStartEffectIds.Count - 4) : string.Empty)));
-            DrawWrappedLabel("  Enemy ordainment: " +
-                (string.IsNullOrWhiteSpace(_arenaBossModifierId) ? "[none]" : _arenaBossModifierId.Trim()));
-            DrawWrappedLabel("  Battle advantage: " + GetArenaBattleAdvantageDisplaySummary());
-            DrawWrappedLabel("  Party " + BuildArenaHeroDraftQuirkSummary(_arenaHeroDraftSlots));
-            if (HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots))
-            {
-                DrawWrappedLabel("  Enemy " + BuildArenaHeroDraftQuirkSummary(_arenaEnemyHeroDraftSlots));
-            }
-
-            DrawArenaHeroDraftSummarySlots(_arenaHeroDraftSlots, "Party");
-            if (HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots))
-            {
-                DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, "Enemy");
-            }
-        }
+private void DrawArenaHeroDraftSummaryLight()
+{
+bool ready = TryGetArenaHeroDraftForLaunch(out _, out _, out _, out string error);
+DrawArenaValidationLine(
+Ui("Party hero draft", "己方英雄草案"),
+ready,
+ready ? BuildArenaDraftReadySummary(_arenaHeroDraftSlots) : error);
+bool enemyReady = !HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots) ||
+TryGetArenaEnemyHeroDraftForLaunch(out _, out _, out _, out error);
+DrawArenaValidationLine(
+Ui("Enemy hero draft", "敌方英雄草案"),
+enemyReady,
+!HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots)
+? Ui("[battle config enemies]", "[使用战斗预设敌人]")
+: (enemyReady ? BuildArenaDraftReadySummary(_arenaEnemyHeroDraftSlots) : error));
+DrawArenaHeroDraftSummarySlots(_arenaHeroDraftSlots, Ui("Party", "己方"));
+if (HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots))
+{
+DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"));
+}
+}
 
         private void DrawArenaHeroDraftSummarySlots(ArenaHeroDraftSlot[] slots, string label)
         {
@@ -14391,11 +16332,11 @@ namespace DD2SteamMultiplayerHost
                         ? "  S" + (i + 1) + ": " + GetArenaHeroPlaceholderDisplayName() + " | placeholder"
                         : "  S" + (i + 1) + ": " + GetArenaActorClassDisplayName(slot.ActorId) +
                             " | path=" + (string.IsNullOrWhiteSpace(slot.PathId) ? "[path]" : GetArenaDraftPathDisplayName(slot.PathId, slot.ActorId)) +
-                            " | skills=" + slot.SkillIds.Count + "/5");
+                            " | skills=" + slot.SkillIds.Count + "/" + GetArenaMaxSkillCountForSlot(slot));
             }
         }
 
-        private static string BuildArenaDraftReadySummary(ArenaHeroDraftSlot[] slots)
+        private string BuildArenaDraftReadySummary(ArenaHeroDraftSlot[] slots)
         {
             int heroes = CountPlayableArenaDraftActors(slots);
             int placeholders = CountArenaHeroPlaceholderDraftActors(slots);
@@ -14404,8 +16345,13 @@ namespace DD2SteamMultiplayerHost
                 : slots
                     .Where(slot => slot != null && !string.IsNullOrWhiteSpace(slot.ActorId) && !IsArenaHeroPlaceholderSlot(slot))
                     .Sum(slot => slot.SkillIds.Count);
-            return heroes + " hero(s) / " + skills + " skill(s)" +
-                (placeholders > 0 ? " / " + placeholders + " placeholder(s)" : string.Empty);
+            string summary = heroes + Ui(" hero(s) / ", " 名英雄 / ") + skills + Ui(" skill(s)", " 技能");
+            if (placeholders > 0)
+            {
+                summary += Ui(" / ", " / ") + placeholders + Ui(" placeholder(s)", " 个占位");
+            }
+
+            return summary;
         }
 
         private void DrawArenaHeroPreviewTile(ActorInstance actor, int slot)
@@ -14444,7 +16390,8 @@ namespace DD2SteamMultiplayerHost
                     : string.Empty);
 
             List<string> skills = GetArenaEquippedSkillIds(actor);
-            for (int i = 0; i < skills.Count && i < 5; i++)
+            int maxDisplay = IsArenaAbominationActor(actor.ActorDataId) ? AbominationMaxSkillsWithTransform : ArenaDefaultMaxSkills;
+            for (int i = 0; i < skills.Count && i < maxDisplay; i++)
             {
                 string skillId = skills[i];
                 Rect skillRect = new Rect(tile.x + 10f + i * 46f, tile.y + 102f, 40f, 40f);
@@ -14488,30 +16435,25 @@ namespace DD2SteamMultiplayerHost
                     : string.Empty);
         }
 
-        private void DrawArenaLaunchReadiness()
-        {
-            PvpModeStatePayload state = null;
-            bool hasEnemyPilot = _session != null &&
-                _session.TryGetPvpModeState(out state) &&
-                state != null &&
-                state.Enabled &&
-                state.EnemyControllerSteamId != 0UL;
-            DrawArenaValidationLine(
-                "Enemy pilot",
-                hasEnemyPilot,
-                hasEnemyPilot
-                    ? ((state.EnemyControllerName ?? string.Empty) + "/" + state.EnemyControllerSteamId)
-                    : "not assigned");
-
-            DrawArenaValidationLine(
-                "Launch path",
-                IsArenaLaunchReady(out string reason),
-                string.IsNullOrWhiteSpace(reason) ? "ready" : reason);
-        }
-
         private void DrawArenaValidationLine(string label, bool ok, string details)
         {
-            GUILayout.Label((ok ? "OK " : "TODO ") + label + ": " + (details ?? string.Empty));
+            Color color = ok
+                ? new Color(0.55f, 0.85f, 0.65f, 1f)
+                : new Color(1f, 0.72f, 0.55f, 1f);
+            string prefix = ok ? Ui("Ready", "就绪") : Ui("Blocked", "未就绪");
+            GUIStyle style = CreateHudLabelStyle(15, FontStyle.Bold, color, TextAnchor.MiddleLeft);
+            GUILayout.Label(prefix + " · " + label + ": " + (details ?? string.Empty), style, GUILayout.Height(28f));
+        }
+
+        private static void DrawWrappedLabel(string text)
+        {
+            GUIStyle style = new GUIStyle(GUI.skin.label)
+            {
+                wordWrap = true,
+                fontSize = Mathf.Max(GUI.skin.label.fontSize, 15),
+            };
+            style.normal.textColor = PanelTextColor;
+            GUILayout.Label(text ?? string.Empty, style);
         }
 
         private bool TryGetArenaBattleConfiguration(
@@ -14617,8 +16559,8 @@ namespace DD2SteamMultiplayerHost
             {
                 if (!TryApplyArenaDraftSkillsToParty(party, out int changedActors, out string applyError))
                 {
-                    _arenaStatus = "Draft validated, but current party apply failed: " + applyError;
-                    HostLog.Write("[arena] Draft validated, but current party apply failed: " + applyError + ".");
+                    _arenaStatus = "Draft validation blocked: current party apply failed: " + applyError;
+                    HostLog.Write("[arena] Draft validation blocked: current party apply failed: " + applyError + ".");
                     return;
                 }
 
@@ -14670,6 +16612,9 @@ namespace DD2SteamMultiplayerHost
                 HostLog.Write("[arena] Launch blocked: " + error);
                 return;
             }
+
+            _arenaHeroVsHeroAtLaunch = HasArenaHeroDraftAnyActor(_arenaEnemyHeroDraftSlots);
+            _coopHeroControlSlots.Clear();
 
             _arenaPendingNativeLaunchPrefsLines = lines;
             _arenaBattleModifierOverrideArmed = true;
@@ -15103,6 +17048,11 @@ namespace DD2SteamMultiplayerHost
                 return false;
             }
 
+            if (_bindCoopControlsToHeroes && !_arenaHeroVsHeroAtLaunch && slots == _arenaHeroDraftSlots)
+            {
+                _coopHeroControlSlots.Clear();
+            }
+
             int actorIndex = 0;
             for (int i = 0; i < slots.Length && actorIndex < actors.Count; i++)
             {
@@ -15121,6 +17071,14 @@ namespace DD2SteamMultiplayerHost
 
                 ActorInstance actor = actors[actorIndex];
                 actorIndex++;
+                if (_bindCoopControlsToHeroes && !_arenaHeroVsHeroAtLaunch && slots == _arenaHeroDraftSlots)
+                {
+                    int controlSlot = i < _arenaDraftControlSlots.Length ? _arenaDraftControlSlots[i] : 0;
+                    if (controlSlot > 0 && controlSlot <= 4)
+                    {
+                        _coopHeroControlSlots[actor.ActorGuid] = controlSlot;
+                    }
+                }
                 bool pathChanged;
                 bool actorChanged;
                 bool equipmentChanged;
@@ -15262,7 +17220,10 @@ namespace DD2SteamMultiplayerHost
                 changed = true;
             }
 
-            foreach (string trinketId in slot.TrinketIds.Where(id => !string.IsNullOrWhiteSpace(id)).Take(2))
+            foreach (string trinketId in slot.TrinketIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Take(2)
+                .OrderByDescending(id => ArenaTrinketHasTag(id, "stained")))
             {
                 if (!equipmentService.TryApplyTrinket(actor, trinketId.Trim(), out error))
                 {
@@ -15272,7 +17233,15 @@ namespace DD2SteamMultiplayerHost
                 changed = true;
             }
 
+            actor.RefreshStats();
+
             return true;
+        }
+
+        private static bool ArenaTrinketHasTag(string itemId, string tag)
+        {
+            ItemDefinition definition = TryGetItemDefinition(itemId);
+            return definition != null && ArenaTrinketOrdering.HasTag(definition.m_tags, tag);
         }
 
         private static string DescribeArenaActor(ActorInstance actor)
@@ -18878,9 +20847,9 @@ namespace DD2SteamMultiplayerHost
             }
         }
 
-        private void DrawDiagnosticsPanelSection()
-        {
-            GUILayout.Label("Diagnostics");
+private void DrawDiagnosticsPanelSection()
+{
+DrawSectionHeader("Diagnostics");
             DrawWrappedLabel(GetVersionPanelStatus());
             if (_session != null)
             {
@@ -18950,15 +20919,6 @@ namespace DD2SteamMultiplayerHost
             {
                 DrawWrappedLabel("  Result: " + status.Resolution);
             }
-        }
-
-        private static void DrawWrappedLabel(string text)
-        {
-            GUIStyle style = new GUIStyle(GUI.skin.label)
-            {
-                wordWrap = true,
-            };
-            GUILayout.Label(text ?? string.Empty, style);
         }
 
         private static string TrimPanelText(string text, int maxLength)
@@ -20131,10 +22091,10 @@ namespace DD2SteamMultiplayerHost
 
         private void ClampArenaBattlePresetBrowserRectToScreen()
         {
-            float maxWidth = Mathf.Max(480f, Screen.width - 20f);
-            float maxHeight = Mathf.Max(360f, Screen.height - 20f);
-            float minWidth = Mathf.Min(880f, maxWidth);
-            float minHeight = Mathf.Min(560f, maxHeight);
+            float maxWidth = Mathf.Max(640f, Screen.width - 16f);
+            float maxHeight = Mathf.Max(480f, Screen.height - 16f);
+            float minWidth = Mathf.Min(ArenaPresetBrowserMinWidth, maxWidth);
+            float minHeight = Mathf.Min(ArenaPresetBrowserMinHeight, maxHeight);
             _arenaBattlePresetBrowserRect.width = Mathf.Clamp(_arenaBattlePresetBrowserRect.width, minWidth, maxWidth);
             _arenaBattlePresetBrowserRect.height = Mathf.Clamp(_arenaBattlePresetBrowserRect.height, minHeight, maxHeight);
             _arenaBattlePresetBrowserRect.x = Mathf.Clamp(_arenaBattlePresetBrowserRect.x, 0f, Mathf.Max(0f, Screen.width - _arenaBattlePresetBrowserRect.width));
@@ -20217,19 +22177,22 @@ namespace DD2SteamMultiplayerHost
                 return;
             }
 
-            if (IsRememberedAutoTurn(info, info.HeroSlot))
-            {
-                return;
-            }
-
             HeroSlotAssignmentPayload owner;
             if (info.IsHeroTeam)
             {
-                if (!_session.TryGetHeroSlotOwner(info.HeroSlot, out owner))
+                if (!TryResolveHeroTurnOwner(info, out int controlSlot, out owner, out string reason))
                 {
-                    LogAutoTurnSkipOnce(info, "slot " + info.HeroSlot + " is not assigned");
+                    LogAutoTurnSkipOnce(info, reason);
                     return;
                 }
+                info = new CombatTurnInfo(
+                    info.Round,
+                    info.Turn,
+                    controlSlot,
+                    info.ActorGuid,
+                    info.ActorName,
+                    info.TeamIndex,
+                    info.TeamPosition);
             }
             else if (pvpEnemyControl)
             {
@@ -20238,6 +22201,11 @@ namespace DD2SteamMultiplayerHost
             else
             {
                 LogAutoTurnSkipOnce(info, "enemy turn without active PVP enemy controller");
+                return;
+            }
+
+            if (IsRememberedAutoTurn(info, info.HeroSlot))
+            {
                 return;
             }
 
@@ -21427,9 +23395,12 @@ namespace DD2SteamMultiplayerHost
             }
 
             int slot = info.HeroSlot;
+            bool explicitSlot = !string.IsNullOrWhiteSpace(argument) &&
+                !string.Equals(argument.Trim(), "auto", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(argument.Trim(), out slot);
             if (!string.IsNullOrWhiteSpace(argument) &&
                 !string.Equals(argument.Trim(), "auto", StringComparison.OrdinalIgnoreCase) &&
-                !int.TryParse(argument.Trim(), out slot))
+                !explicitSlot)
             {
                 HostLog.Write("Usage: turncurrent [slot|auto].");
                 return;
@@ -21449,9 +23420,29 @@ namespace DD2SteamMultiplayerHost
             HeroSlotAssignmentPayload owner;
             if (info.IsHeroTeam)
             {
-                if (!_session.TryGetHeroSlotOwner(slot, out owner))
+                if (_bindCoopControlsToHeroes)
                 {
-                    HostLog.Write("Turncurrent warning: slot " + slot + " has no assigned owner.");
+                    if (explicitSlot)
+                    {
+                        HostLog.Write("Turncurrent ignored: explicit slots are disabled while hero binding is active.");
+                        return;
+                    }
+
+                    if (!TryResolveHeroTurnOwner(info, out slot, out owner, out string reason))
+                    {
+                        HostLog.Write("Turncurrent ignored: " + reason + ".");
+                        return;
+                    }
+                }
+                else if (!_session.TryGetHeroSlotOwner(slot, out owner))
+                {
+                    HostLog.Write("Turncurrent ignored: slot " + slot + " has no assigned owner.");
+                    return;
+                }
+                else if (owner == null)
+                {
+                    HostLog.Write("Turncurrent ignored: slot " + slot + " has no valid owner.");
+                    return;
                 }
             }
             else
@@ -21491,7 +23482,8 @@ namespace DD2SteamMultiplayerHost
             if (string.IsNullOrEmpty(value) || value == "state")
             {
                 HostLog.Write("[autoturn] enabled=" + _autoTurnPromptsEnabled +
-                    ". Hero turns use TeamPosition + 1; PVP enemy turns use synthetic negative slots.");
+                    ", heroBinding=" + _bindCoopControlsToHeroes +
+                    ". Hero turns use configured identity binding when active, otherwise TeamPosition + 1; PVP enemy turns use synthetic negative slots.");
                 return;
             }
 

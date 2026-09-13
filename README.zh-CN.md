@@ -17,6 +17,8 @@ DD2 Steam MP 是一个用于《Darkest Dungeon II》的实验性 Steam 大厅和
 - 客机镜像 HUD，包括战斗、地图、背包/run 状态、商店/loadout 和自定义 debug-demo 设置。
 - 自定义 debug-demo/PvP 战斗设置，包括英雄预设、怪物预设、连战、火炬/忏悔选项和部分竞技场修正。
 
+BattleUndo 兼容桥：Host 暴露 `DD2SteamMultiplayerRunner.NotifyUndoRestoreBegin(restoreId)` 和 `NotifyUndoRestoreComplete(restoreId, success)`。Undo 集成可通过反射调用这两个静态入口；开始时会递增 RestoreGeneration、清空待处理 TurnCommand、重置自动回合记忆并强制下一轮 Combat/DamageMeter snapshot，完成或拒绝时再次清理并强制刷新。所有入口必须在 Unity 主线程调用，客户端不应自行执行恢复。
+
 ## 重要限制
 
 - 客机不会运行完全同步的 DD2 原生 Unity 场景。当前实际目标是远程控制加镜像 UI，而不是确定性场景复制。

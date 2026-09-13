@@ -12,6 +12,8 @@ namespace DD2SteamMultiplayerHost
 
         public event Action<ClearTurnPayload> TurnCleared;
 
+        public bool HasPendingTurn => _pendingTurn != null;
+
         public void StartTurn(TurnPromptPayload prompt, HeroSlotAssignmentPayload owner)
         {
             _pendingTurn = new PendingTurn(prompt, owner);

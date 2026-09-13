@@ -396,6 +396,8 @@ namespace DD2SteamMultiplayerHost.Protocol
 
         public string CurrentLastTurnActorGuid { get; set; }
 
+        public long RestoreGeneration { get; set; }
+
         public CombatSelectedSkillPayload SelectedSkill { get; set; }
 
         public IList<CombatTurnOrderEntryPayload> TurnOrder { get; set; }
@@ -3424,6 +3426,8 @@ namespace DD2SteamMultiplayerHost.Protocol
         public string CurrentActorGuid { get; set; }
 
         public string CurrentActorName { get; set; }
+
+        public long RestoreGeneration { get; set; }
 
         public float PlayerTotalDamage { get; set; }
 
