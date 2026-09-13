@@ -10,5 +10,9 @@
 - [x] Add an Arena-only RNG context: snapshot the current Run `RandomContainer`, seed combat/BOSS/AI/effect streams independently, and restore the exact Run state on every exit path.
 - [x] Replace direct `UnityEngine.Random` Arena selection with a private Arena PRNG so UI-side rolls cannot consume the Run random state.
 - [x] Add runtime digests/logs for ordainment ownership and RNG before/arena/restore phases.
+- [x] Resolve Arena ordainment at `BossCalculation.RollBossModifier`, instead of relying only on the native test preference lookup.
+- [x] Guard the ordained-enemy UI path when no expedition `RunManager.Boss` exists, and temporarily bind the matching BossDefinition for the selected Arena modifier.
+- [x] Preserve the current `BattleTurnType` when MP replaces a PVE enemy controller with an input controller, preventing all skills from becoming grey.
+- [x] Add `combatdetail` diagnostics and an Arena enemy-AI selection watchdog for runtime regression evidence.
 - [x] Add a focused contract check, build all MP projects, deploy with backup, and package the three-DLL release.
 - [ ] Run a full in-game Arena matrix from Altar, Embark, and Driving with/without ordainment and verify post-Arena Run RNG digest against a control run.

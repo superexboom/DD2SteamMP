@@ -4,6 +4,8 @@ $runnerPath = Join-Path $PSScriptRoot 'DD2SteamMultiplayerHost\DD2SteamMultiplay
 $runner = Get-Content -LiteralPath $runnerPath -Raw -Encoding UTF8
 $rngPath = Join-Path $PSScriptRoot 'DD2SteamMultiplayerHost\ArenaRandomContext.cs'
 $rng = Get-Content -LiteralPath $rngPath -Raw -Encoding UTF8
+$mcpPath = Join-Path $PSScriptRoot 'automation\mcp_server.py'
+$mcp = Get-Content -LiteralPath $mcpPath -Raw -Encoding UTF8
 $required = @(
     'string.Equals(definition.m_Id, "ambush_monsters", StringComparison.Ordinal)',
     'private bool TryResolveHeroTurnOwner(',
@@ -24,11 +26,17 @@ $required = @(
     '_arenaRandomContext.TryBegin',
     '_arenaRandomContext?.End',
     'ArenaBossModifierPrefix',
+    'ArenaBossModifierRollPrefix',
     'IsArenaEnemyActorClass',
-    'bossModifierOriginal'
+    'bossModifierOriginal',
+    'arena_status',
+    'arena_start',
+    'arena_cancel',
+    'arena_rng_test',
+    'combatdetail'
 )
 foreach ($text in $required) {
-    if (-not ($runner + $rng).Contains($text)) { throw "Missing MP contract: $text" }
+    if (-not ($runner + $rng + $mcp).Contains($text)) { throw "Missing MP contract: $text" }
 }
 
 foreach ($text in @(
@@ -46,6 +54,10 @@ foreach ($text in @(
 
 if ($runner.Contains('float pick = UnityEngine.Random.Range(0f, totalWeight)')) {
     throw 'Arena battle advantage still consumes UnityEngine.Random directly.'
+}
+
+if (-not ($mcp.Contains('tools/call') -and $mcp.Contains('command.txt') -and $mcp.Contains('doorstop_host.log'))) {
+    throw 'Arena MCP wrapper is incomplete.'
 }
 
 if ($runner.Contains('GetArenaHeroCandidateScrollHeight') -or

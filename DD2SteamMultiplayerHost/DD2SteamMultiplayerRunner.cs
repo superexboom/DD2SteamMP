@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Assets.Code.Actor;
+using Assets.Code.Actor.ActorController;
 using Assets.Code.Actor.Queries;
 using Assets.Code.Audio.Narration;
 using Assets.Code.Boss;
@@ -211,6 +212,9 @@ private static readonly Color PanelChipBlockedColor = new Color(0.28f, 0.12f, 0.
         private uint _lastAutoTurnActorGuid;
         private string _lastAutoTurnSkipKey;
         private bool _pvpEnemyInputControllersActive;
+        private string _lastArenaEnemyAiRecoveryKey;
+        private int _arenaEnemyAiRecoveryAttempts;
+        private float _nextArenaEnemyAiRecoveryTime;
         private string _lastPvpEnemyControllerDigest;
         private string _lastCombatSnapshotDigest;
         private string _lastLootWindowSnapshotDigest;
@@ -864,6 +868,7 @@ PollCommandFile();
             PollArenaDraftQuirkApply();
             PollArenaEnemyDraftApply();
             PollPvpEnemyControllerRuntime();
+            PollStalledArenaEnemyAiTurn();
             PollAutoTurnPrompts();
             _snapshotPollsThisFrame = 0;
             MeasureSnapshotPoll("combat", PollCombatSnapshots);
@@ -1219,7 +1224,7 @@ _lobbyClient.DumpLobby();
 
         private static void LogControls()
         {
-            const string message = "Lobby controls: F6=toggle fullscreen Mirror HUD, F7=toggle compact control panel, F8=dump lobby, F9=create friends-only lobby, F10=open Steam invite overlay, F11=leave lobby. Command file is a debug fallback and supports: host, invite, leave, dump, join <lobbyId>, say <text>, slot, slotauto, pvp, turn, turncurrent, autoturn, skill, target, pass, heroassign, heroclear, heropath, heroready, heroconfirm, storychoice, innbiome, innembark, embarkapply, embarkcontinue, altarcontinue, altarspend, altarreward, confessionchoice, resultscontinue, laircontinue, lairretreat, dialogconfirm, dialogdecline, resync, fullstate, nativeprobe, state, digest, combat. Run/game/map/loadout/story/inn/embark/altar/confession/lair/dialog/store/stagecoach state is mirrored in the F6 HUD; F7 keeps lobby, slot, Arena, and diagnostics controls.";
+            const string message = "Lobby controls: F6=toggle fullscreen Mirror HUD, F7=toggle compact control panel, F8=dump lobby, F9=create friends-only lobby, F10=open Steam invite overlay, F11=leave lobby. Command file is a debug fallback and supports: host, invite, leave, dump, join <lobbyId>, say <text>, slot, slotauto, pvp, turn, turncurrent, autoturn, skill, target, pass, heroassign, heroclear, heropath, heroready, heroconfirm, storychoice, innbiome, innembark, embarkapply, embarkcontinue, altarcontinue, altarspend, altarreward, confessionchoice, resultscontinue, laircontinue, lairretreat, dialogconfirm, dialogdecline, resync, fullstate, nativeprobe, state, digest, combat, combatdetail, arena_status, arena_start <battleConfigId> [bossModifierId|none], arena_cancel, arena_rng_test. Run/game/map/loadout/story/inn/embark/altar/confession/lair/dialog/store/stagecoach state is mirrored in the F6 HUD; F7 keeps lobby, slot, Arena, and diagnostics controls.";
             Debug.Log("[DD2SteamMP] " + message);
             HostLog.Write(message);
         }
@@ -1252,11 +1257,20 @@ _lobbyClient.DumpLobby();
                         null,
                         new[] { typeof(ActorDataClass) },
                         null);
+                    MethodInfo bossModifierRollOriginal = typeof(BossCalculation).GetMethod(
+                        nameof(BossCalculation.RollBossModifier),
+                        BindingFlags.Public | BindingFlags.Static,
+                        null,
+                        new[] { typeof(ActorDataClass) },
+                        null);
                     MethodInfo battleModifierPrefix = typeof(DD2SteamMultiplayerRunner).GetMethod(
                         nameof(ArenaBattleModifierRollPrefix),
                         BindingFlags.NonPublic | BindingFlags.Static);
                     MethodInfo bossModifierPrefix = typeof(DD2SteamMultiplayerRunner).GetMethod(
                         nameof(ArenaBossModifierPrefix),
+                        BindingFlags.NonPublic | BindingFlags.Static);
+                    MethodInfo bossModifierRollPrefix = typeof(DD2SteamMultiplayerRunner).GetMethod(
+                        nameof(ArenaBossModifierRollPrefix),
                         BindingFlags.NonPublic | BindingFlags.Static);
                     MethodInfo actorTeamOriginal = typeof(CombatBhv).GetMethod(
                         "CreateActorOnTeamParameters",
@@ -1277,6 +1291,15 @@ _lobbyClient.DumpLobby();
                         BindingFlags.NonPublic | BindingFlags.Static);
                     MethodInfo actorTeamPostfix = typeof(DD2SteamMultiplayerRunner).GetMethod(
                         nameof(ArenaActorTeamCreationPostfix),
+                        BindingFlags.NonPublic | BindingFlags.Static);
+                    MethodInfo enemyStatsOriginal = typeof(CombatInterfaceBarUiBhv).GetMethod(
+                        "SetEnemyStatsFromTarget",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+                    MethodInfo enemyStatsPrefix = typeof(DD2SteamMultiplayerRunner).GetMethod(
+                        nameof(ArenaEnemyStatsPrefix),
+                        BindingFlags.NonPublic | BindingFlags.Static);
+                    MethodInfo enemyStatsPostfix = typeof(DD2SteamMultiplayerRunner).GetMethod(
+                        nameof(ArenaEnemyStatsPostfix),
                         BindingFlags.NonPublic | BindingFlags.Static);
                     MethodInfo torchGroupOriginal = typeof(TorchManager).GetMethod(
                         nameof(TorchManager.GetActiveTorchLevelGroup),
@@ -1335,7 +1358,9 @@ _lobbyClient.DumpLobby();
 
                     if (battleModifierOriginal == null || battleModifierPrefix == null ||
                         bossModifierOriginal == null || bossModifierPrefix == null ||
+                        bossModifierRollOriginal == null || bossModifierRollPrefix == null ||
                         actorTeamOriginal == null || actorTeamPrefix == null || actorTeamPostfix == null ||
+                        enemyStatsOriginal == null || enemyStatsPrefix == null || enemyStatsPostfix == null ||
                         torchGroupOriginal == null || torchGroupPrefix == null ||
                         runValueGetOriginal == null || runValueGetPrefix == null ||
                         runValueSetOriginal == null || runValueSetPrefix == null ||
@@ -1348,7 +1373,13 @@ _lobbyClient.DumpLobby();
 
                     PatchWithHarmonyPrefix(battleModifierOriginal, battleModifierPrefix);
                     PatchWithHarmonyPrefix(bossModifierOriginal, bossModifierPrefix);
+                    // GetTestBossModifier can be bypassed by a pre-JITted/inlined
+                    // call site. RollBossModifier is the stable public boundary
+                    // used by ActorInstance.PostCreate, so patch it as a second
+                    // layer and make the selected ordainment deterministic there.
+                    PatchWithHarmonyPrefix(bossModifierRollOriginal, bossModifierRollPrefix);
                     PatchWithHarmonyPrefixAndPostfix(actorTeamOriginal, actorTeamPrefix, actorTeamPostfix);
+                    PatchWithHarmonyPrefixAndPostfix(enemyStatsOriginal, enemyStatsPrefix, enemyStatsPostfix);
                     PatchWithHarmonyPrefix(torchGroupOriginal, torchGroupPrefix);
                     PatchWithHarmonyPrefix(runValueGetOriginal, runValueGetPrefix);
                     PatchWithHarmonyPrefix(runValueSetOriginal, runValueSetPrefix);
@@ -1356,7 +1387,12 @@ _lobbyClient.DumpLobby();
                     PatchWithHarmonyPrefix(stageCoachItemQtyOriginal, stageCoachItemQtyPrefix);
                     PatchWithHarmonyPrefix(stageCoachItemTagQtyOriginal, stageCoachItemTagQtyPrefix);
                     _arenaBattleModifierPatchInstalled = true;
-                    HostLog.Write("[arena] Arena runtime override patches installed.");
+                    HostLog.Write("[arena] Arena runtime override patches installed; battle=" +
+                        battleModifierOriginal.DeclaringType.FullName + "." + battleModifierOriginal.Name +
+                        ", bossTest=" + bossModifierOriginal.DeclaringType.FullName + "." + bossModifierOriginal.Name +
+                        ", bossRoll=" + bossModifierRollOriginal.DeclaringType.FullName + "." + bossModifierRollOriginal.Name +
+                        ", actorTeam=" + actorTeamOriginal.DeclaringType.FullName + "." + actorTeamOriginal.Name +
+                        ", enemyStatsUi=" + enemyStatsOriginal.DeclaringType.FullName + "." + enemyStatsOriginal.Name + ".");
                 }
                 catch (Exception ex)
                 {
@@ -1613,12 +1649,180 @@ _lobbyClient.DumpLobby();
             return false;
         }
 
+        private static bool ArenaBossModifierRollPrefix(
+            ActorDataClass actorDataClass,
+            ref BossModifierDefinition __result)
+        {
+            DD2SteamMultiplayerRunner runner = _activeArenaRunner;
+            if (runner == null || !runner.ShouldOverrideArenaBossModifierAtRollBoundary())
+            {
+                return true;
+            }
+
+            // RollBossModifier is called by ActorInstance.PostCreate and is
+            // the authoritative point at which the actor receives its boss
+            // modifier. Keep normal/native resolution for player or unrelated
+            // actors; only the configured Arena enemy classes are overridden.
+            if (!runner.IsArenaEnemyActorClass(actorDataClass))
+            {
+                runner.LogArenaBossModifierSkip(actorDataClass, "not-an-arena-enemy-class");
+                return true;
+            }
+
+            string modifierId = (runner._arenaBossModifierId ?? string.Empty).Trim();
+            BossModifierDefinition definition = string.IsNullOrWhiteSpace(modifierId)
+                ? null
+                : TryGetArenaBossModifierDefinition(modifierId);
+            __result = definition != null && definition.GetIsValidForActorClass(actorDataClass)
+                ? definition
+                : null;
+            runner.LogArenaBossModifierApplication(actorDataClass, __result);
+            return false;
+        }
+
+        private sealed class ArenaEnemyStatsUiBossContext
+        {
+            public RunManager RunManager;
+            public BossDefinition PreviousBoss;
+            public bool Changed;
+        }
+
+        private static bool ArenaEnemyStatsPrefix(
+            ActorInstance target,
+            ref ArenaEnemyStatsUiBossContext __state)
+        {
+            DD2SteamMultiplayerRunner runner = _activeArenaRunner;
+            if (runner == null || !runner.IsArenaUiBossContextActive(target))
+            {
+                return true;
+            }
+
+            try
+            {
+                RunManager runManager = SingletonMonoBehaviour<RunBhv>.HasInstance(false)
+                    ? SingletonMonoBehaviour<RunBhv>.Instance.RunManager
+                    : null;
+                if (runManager == null)
+                {
+                    // The native method cannot render an ordained enemy
+                    // without a RunManager at all. Skip only this display call;
+                    // combat state and the actor's actual modifier remain intact.
+                    runner.HostLogArenaScope("enemy stats UI skipped because RunManager is unavailable");
+                    return false;
+                }
+
+                BossDefinition selectedBoss = runner.FindBossDefinitionForModifier(target.BossModifier);
+                if (selectedBoss == null)
+                {
+                    runner.HostLogArenaScope("enemy stats UI skipped because no BossDefinition matches modifier " +
+                        target.BossModifier.m_Id);
+                    return false;
+                }
+
+                __state = new ArenaEnemyStatsUiBossContext
+                {
+                    RunManager = runManager,
+                    PreviousBoss = runManager.Boss,
+                    Changed = true,
+                };
+                runner.SetRunManagerBoss(runManager, selectedBoss);
+                runner.HostLogArenaScope("enemy stats UI context selected boss=" + selectedBoss.m_Id +
+                    " for modifier=" + target.BossModifier.m_Id + ".");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                runner.HostLogArenaScope("enemy stats UI guard failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static void ArenaEnemyStatsPostfix(
+            ActorInstance target,
+            ArenaEnemyStatsUiBossContext __state)
+        {
+            if (__state == null || !__state.Changed || __state.RunManager == null)
+            {
+                return;
+            }
+
+            try
+            {
+                DD2SteamMultiplayerRunner runner = _activeArenaRunner;
+                if (runner != null)
+                {
+                    runner.SetRunManagerBoss(__state.RunManager, __state.PreviousBoss);
+                }
+            }
+            catch (Exception ex)
+            {
+                HostLog.Write("[arena] Failed to restore RunManager Boss after enemy stats UI: " + ex.Message + ".");
+            }
+        }
+
+        private bool IsArenaUiBossContextActive(ActorInstance target)
+        {
+            return target != null &&
+                target.TeamIndex != 0 &&
+                target.BossModifier != null &&
+                _arenaBattleModifierOverrideArmed &&
+                (_arenaPendingLaunch ||
+                 _arenaDebugControlsSuppressed ||
+                 _arenaResultBypassArmed ||
+                 _arenaWaitingForNextBattle ||
+                 _arenaPostBattleMainMenuReturnPending ||
+                 _arenaPostBattleMainMenuReturnRequested);
+        }
+
+        private BossDefinition FindBossDefinitionForModifier(BossModifierDefinition modifier)
+        {
+            if (modifier == null || !SingletonMonoBehaviour<Library<string, BossDefinition>>.HasInstance(false))
+            {
+                return null;
+            }
+
+            Library<string, BossDefinition> library = SingletonMonoBehaviour<Library<string, BossDefinition>>.Instance;
+            int count = library.GetNumberOfLibraryElements();
+            for (int i = 0; i < count; i++)
+            {
+                BossDefinition boss = library.GetLibraryElementAtIndex(i);
+                if (boss == null || boss.BossModifiers == null)
+                {
+                    continue;
+                }
+
+                if (boss.BossModifiers.Any(candidate => candidate == modifier ||
+                    (candidate != null && string.Equals(candidate.m_Id, modifier.m_Id, StringComparison.Ordinal))))
+                {
+                    return boss;
+                }
+            }
+
+            return null;
+        }
+
+        private void SetRunManagerBoss(RunManager runManager, BossDefinition boss)
+        {
+            if (runManager == null)
+            {
+                return;
+            }
+
+            FieldInfo field = typeof(RunManager).GetField("m_Boss", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+            {
+                throw new MissingFieldException(typeof(RunManager).FullName, "m_Boss");
+            }
+
+            field.SetValue(runManager, boss);
+        }
+
         private static void ArenaActorTeamCreationPrefix(
             bool useExistingActorIfExists,
             bool allowOversizeTeam)
         {
             DD2SteamMultiplayerRunner runner = _activeArenaRunner;
-            if (runner == null || !runner._arenaBossModifierScopeActive)
+            if (runner == null)
             {
                 return;
             }
@@ -1627,9 +1831,12 @@ _lobbyClient.DumpLobby();
             // non-existing, non-oversize group in the native debug path; Team 0
             // either reuses the party or allows the configured hero size.
             runner._arenaEnemyActorCreationScope = !useExistingActorIfExists && !allowOversizeTeam;
-            if (runner._arenaEnemyActorCreationScope)
+            if (runner._arenaBossModifierScopeActive || runner._arenaPendingLaunch)
             {
-                runner.HostLogArenaScope("enemy actor creation scope entered");
+                runner.HostLogArenaScope("actor team creation observed useExisting=" +
+                    useExistingActorIfExists + ", allowOversize=" + allowOversizeTeam +
+                    ", enemyScope=" + runner._arenaEnemyActorCreationScope +
+                    ", bossScope=" + runner._arenaBossModifierScopeActive + ".");
             }
         }
 
@@ -1705,6 +1912,27 @@ _lobbyClient.DumpLobby();
                 (actorDataClass == null ? "[null]" : actorDataClass.Id) +
                 ", selected=" + ((_arenaBossModifierId ?? string.Empty).Trim()) +
                 ", applied=" + (result == null ? "[none]" : result.m_Id) + ".");
+        }
+
+        private void LogArenaBossModifierSkip(ActorDataClass actorDataClass, string reason)
+        {
+            HostLog.Write("[arena] Boss modifier roll observed actorClass=" +
+                (actorDataClass == null ? "[null]" : actorDataClass.Id) +
+                ", selected=" + ((_arenaBossModifierId ?? string.Empty).Trim()) +
+                ", skipped=" + (reason ?? "[none]") + ".");
+        }
+
+        private bool ShouldOverrideArenaBossModifierAtRollBoundary()
+        {
+            return _arenaBossModifierScopeActive &&
+                _arenaBattleModifierOverrideArmed &&
+                !string.IsNullOrWhiteSpace(_arenaBossModifierId) &&
+                (_arenaPendingLaunch ||
+                 _arenaDebugControlsSuppressed ||
+                 _arenaResultBypassArmed ||
+                 _arenaWaitingForNextBattle ||
+                 _arenaPostBattleMainMenuReturnPending ||
+                 _arenaPostBattleMainMenuReturnRequested);
         }
 
         private bool ShouldOverrideArenaBattleModifierRoll()
@@ -2039,10 +2267,6 @@ _lobbyClient.DumpLobby();
             try
             {
                 TextBasedEditorPrefsBaseType.RUN_TEST_BOSS_MODIFIER.ClearValue();
-                if (_activeArenaRunner != null)
-                {
-                    _activeArenaRunner._arenaBossModifierScopeActive = false;
-                }
             }
             catch
             {
@@ -17986,8 +18210,11 @@ DrawArenaHeroDraftSummarySlots(_arenaEnemyHeroDraftSlots, Ui("Enemy", "敌方"))
             _arenaWaitingForNextBattle = false;
             _arenaPostBattleMainMenuReturnPending = false;
             _arenaResultLoadingFirstSeenTime = 0f;
-            ReleaseArenaBattleModifierOverride("result bypass released");
-            HostLog.Write("[arena] Result bypass released; current mode=" + currentMode.GetName() + ".");
+            if (!_arenaPendingLaunch)
+            {
+                ReleaseArenaBattleModifierOverride("result bypass released");
+                HostLog.Write("[arena] Result bypass released; current mode=" + currentMode.GetName() + ".");
+            }
         }
 
         private void RequestArenaMainMenuReturn(GameModeMgr gameModeMgr, string reason, bool unloadEverything)
@@ -22519,6 +22746,100 @@ DrawSectionHeader("Diagnostics");
             RememberAutoTurn(info, info.HeroSlot);
         }
 
+        private void PollStalledArenaEnemyAiTurn()
+        {
+            if (_session == null || _combatAdapter == null ||
+                (!_arenaBattleModifierOverrideArmed && !_arenaResultBypassArmed) ||
+                !SingletonMonoBehaviour<CombatBhv>.HasInstance(false) ||
+                GameModeMgr.CurrentMode != GameModeType.COMBAT)
+            {
+                return;
+            }
+
+            // PVP enemy turns are deliberately input-owned. This watchdog is
+            // only for the native RANDOM controller used by PVE Arena.
+            PvpModeStatePayload pvpState;
+            if (_session.TryGetPvpModeState(out pvpState) && pvpState != null && pvpState.Enabled)
+            {
+                return;
+            }
+
+            CombatBhv combat = SingletonMonoBehaviour<CombatBhv>.Instance;
+            if (combat == null || combat.CurrentBattleState != BattleState.IN_TURN_SELECT ||
+                !combat.GetHasCurrentActor())
+            {
+                ResetArenaEnemyAiRecovery();
+                return;
+            }
+
+            ActorInstance actor = combat.GetCurrentActor();
+            if (actor == null || actor.TeamIndex == 0 || actor.Controller == null ||
+                actor.Controller.m_ActorControllerType != ActorControllerType.RANDOM ||
+                actor.GetIsSelectionComplete())
+            {
+                ResetArenaEnemyAiRecovery();
+                return;
+            }
+
+            IReadOnlyList<SkillTargetEntry> validEntries;
+            try
+            {
+                validEntries = actor.Controller.GetValidSkillTargetEntries();
+            }
+            catch (Exception ex)
+            {
+                HostLog.Write("[arena] Enemy AI recovery could not inspect valid skills for " +
+                    actor.ActorDataId + "/" + actor.ActorGuid + ": " + ex.Message + ".");
+                return;
+            }
+
+            if (validEntries == null || validEntries.Count == 0)
+            {
+                ResetArenaEnemyAiRecovery();
+                return;
+            }
+
+            string recoveryKey = combat.CurrentRound + ":" + combat.CurrentTurn + ":" + actor.ActorGuid;
+            if (!string.Equals(_lastArenaEnemyAiRecoveryKey, recoveryKey, StringComparison.Ordinal))
+            {
+                _lastArenaEnemyAiRecoveryKey = recoveryKey;
+                _arenaEnemyAiRecoveryAttempts = 0;
+                _nextArenaEnemyAiRecoveryTime = 0f;
+            }
+
+            if (_arenaEnemyAiRecoveryAttempts >= 3 || Time.unscaledTime < _nextArenaEnemyAiRecoveryTime)
+            {
+                return;
+            }
+
+            _arenaEnemyAiRecoveryAttempts++;
+            _nextArenaEnemyAiRecoveryTime = Time.unscaledTime + 0.25f;
+            HostLog.Write("[arena] Enemy AI selection recovery attempt=" + _arenaEnemyAiRecoveryAttempts +
+                ", actor=" + actor.ActorDataId + "/" + actor.ActorGuid +
+                ", validSkills=" + validEntries.Count +
+                ", bossModifier=" + (actor.BossModifier == null ? "[none]" : actor.BossModifier.m_Id) + ".");
+            try
+            {
+                actor.Controller.OnTurnSelect();
+                HostLog.Write("[arena] Enemy AI selection recovery result actor=" +
+                    actor.ActorDataId + "/" + actor.ActorGuid +
+                    ", selected=" + (actor.GetSelectedSkillId() ?? "[none]") +
+                    ", target=" + actor.GetSelectedTargetActorGuid() + ".");
+            }
+            catch (Exception ex)
+            {
+                HostLog.Write("[arena] Enemy AI selection recovery failed actor=" +
+                    actor.ActorDataId + "/" + actor.ActorGuid + ": " + ex + ".");
+            }
+        }
+
+        private void ResetArenaEnemyAiRecovery()
+        {
+            _lastArenaEnemyAiRecoveryKey = null;
+            _arenaEnemyAiRecoveryAttempts = 0;
+            _nextArenaEnemyAiRecoveryTime = 0f;
+        }
+
         private void PollPvpEnemyControllerRuntime()
         {
             if (_combatAdapter == null || _session == null || _lobbyClient == null || !_lobbyClient.IsHost)
@@ -23604,6 +23925,38 @@ DrawSectionHeader("Diagnostics");
                     }
 
                     break;
+                case "combatdetail":
+                    if (_combatAdapter != null)
+                    {
+                        _combatAdapter.LogCombatDetail();
+                    }
+
+                    break;
+                case "arena_status":
+                    HostLog.Write("[arena] automation status mode=" +
+                        (GameModeMgr.CurrentMode == null ? "[null]" : GameModeMgr.CurrentMode.GetName()) +
+                        ", pending=" + _arenaPendingLaunch +
+                        ", bossScope=" + _arenaBossModifierScopeActive +
+                        ", enemyScope=" + _arenaEnemyActorCreationScope +
+                        ", rngActive=" + (_arenaRandomContext != null && _arenaRandomContext.IsActive) +
+                        ", rngSeed=" + (_arenaRandomContext == null ? 0 : _arenaRandomContext.Seed) +
+                        ", " + BuildArenaLaunchSnapshot());
+                    break;
+                case "arena_start":
+                    ExecuteArenaAutomationStartCommand(argument);
+                    break;
+                case "arena_cancel":
+                    _arenaPendingLaunch = false;
+                    _arenaPendingDraftSkillApply = false;
+                    _arenaPendingDraftQuirkApply = false;
+                    _arenaPendingEnemyDraftApply = false;
+                    ReleaseArenaBattleModifierOverride("automation cancel");
+                    _arenaStatus = "Arena launch cancelled by automation.";
+                    HostLog.Write("[arena] Automation cancelled pending Arena launch.");
+                    break;
+                case "arena_rng_test":
+                    ExecuteArenaRngSelfCheckCommand();
+                    break;
                 case "join":
                     if (string.IsNullOrWhiteSpace(argument) || !TryParseLobbyId(argument, out ulong lobbyId))
                     {
@@ -23617,6 +23970,73 @@ DrawSectionHeader("Diagnostics");
                     HostLog.Write("Unknown command file request: " + command);
                     break;
             }
+        }
+
+        private void ExecuteArenaAutomationStartCommand(string argument)
+        {
+            if (_lobbyClient != null && _lobbyClient.IsInLobby && !_lobbyClient.IsHost)
+            {
+                HostLog.Write("[arena] Automation start rejected for client; only host may start Arena.");
+                return;
+            }
+
+            string[] parts = (argument ?? string.Empty)
+                .Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length > 0 && !string.IsNullOrWhiteSpace(parts[0]))
+            {
+                _arenaBattleConfigId = parts[0].Trim();
+            }
+
+            if (parts.Length > 1)
+            {
+                _arenaBossModifierId =
+                    string.Equals(parts[1], "none", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(parts[1], "clear", StringComparison.OrdinalIgnoreCase)
+                        ? string.Empty
+                        : parts[1].Trim();
+            }
+
+            if (!HasArenaHeroDraftAnyActor(_arenaHeroDraftSlots))
+            {
+                try
+                {
+                    MethodInfo buildParty = typeof(RosterManager).GetMethod(
+                        "BuildPartyIfEmpty",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    buildParty?.Invoke(Singleton<GameTypeMgr>.Instance.RosterManager, null);
+                }
+                catch (Exception ex)
+                {
+                    HostLog.Write("[arena] Automation party bootstrap failed: " + ex.Message + ".");
+                }
+                ImportArenaHeroDraftFromCurrentParty(_arenaHeroDraftSlots, false);
+                _arenaHeroDraftInitialized = true;
+            }
+
+            HostLog.Write("[arena] Automation start requested config=" + _arenaBattleConfigId +
+                ", ordainment=" + (string.IsNullOrWhiteSpace(_arenaBossModifierId) ? "[none]" : _arenaBossModifierId) + ".");
+            BeginArenaLaunch();
+        }
+
+        private void ExecuteArenaRngSelfCheckCommand()
+        {
+            if (_arenaPendingLaunch || _arenaDebugControlsSuppressed || _arenaResultBypassArmed)
+            {
+                HostLog.Write("[arena-rng] self-check rejected while Arena is active.");
+                return;
+            }
+
+            string error = string.Empty;
+            bool started = _arenaRandomContext != null &&
+                _arenaRandomContext.TryBegin("automation-self-check", out error);
+            if (!started)
+            {
+                HostLog.Write("[arena-rng] self-check begin failed error=" + error + ".");
+                return;
+            }
+
+            _arenaRandomContext.End("automation-self-check");
+            HostLog.Write("[arena-rng] self-check complete.");
         }
 
         private void ExecuteSlotCommand(string argument)

@@ -185,6 +185,62 @@ namespace DD2SteamMultiplayerHost.Adapter
             }
         }
 
+        public void LogCombatDetail()
+        {
+            if (!TryGetCombat(out CombatBhv combat))
+            {
+                Log("[combat-detail] CombatBhv is not available.");
+                return;
+            }
+
+            IReadOnlyList<uint> actorGuids = GetCurrentCombatActorGuids();
+            Log("[combat-detail] state=" + combat.CurrentBattleState +
+                ", round=" + combat.CurrentRound +
+                ", turn=" + combat.CurrentTurn +
+                ", actorCount=" + actorGuids.Count + ".");
+            foreach (uint actorGuid in actorGuids)
+            {
+                ActorInstance actor;
+                if (!TryResolveActor(actorGuid, out actor) || actor == null)
+                {
+                    Log("[combat-detail] actor guid=" + actorGuid + " missing.");
+                    continue;
+                }
+
+                ActorControllerBase controller = actor.Controller;
+                string controllerType = controller == null ? "[null]" : Convert.ToString(controller.m_ActorControllerType);
+                string bossModifier = actor.BossModifier == null ? "[none]" : actor.BossModifier.m_Id;
+                string selected = actor.GetSelectedSkillId() ?? "[none]";
+                string validSkills = "[none]";
+                try
+                {
+                    if (controller != null)
+                    {
+                        IReadOnlyList<SkillTargetEntry> entries = controller.GetValidSkillTargetEntries();
+                        if (entries != null && entries.Count > 0)
+                        {
+                            validSkills = string.Join(",", entries.Where(entry => entry != null)
+                                .Select(entry => entry.m_SkillId + ":" + entry.m_ValidTargetActorGuids.Count).ToArray());
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    validSkills = "[error:" + ex.Message + "]";
+                }
+
+                Log("[combat-detail] actor=" + DescribeActor(actor) + "/" + actor.ActorGuid +
+                    ", team=" + actor.TeamIndex + ":" + actor.TeamPosition +
+                    ", living=" + actor.IsLiving +
+                    ", hp=" + actor.HpRaw.ToString("0.##") + "/" + actor.CurrentHpMax.ToString("0.##") +
+                    ", controller=" + controllerType +
+                    ", inputValid=" + (controller == null ? "[null]" : controller.GetIsInputValid().ToString()) +
+                    ", bossModifier=" + bossModifier +
+                    ", selected=" + selected +
+                    ", validSkills=" + validSkills + ".");
+            }
+        }
+
         public bool TryGetCombatSnapshot(out CombatSnapshotPayload snapshot)
         {
             snapshot = null;
@@ -545,6 +601,7 @@ namespace DD2SteamMultiplayerHost.Adapter
                 }
 
                 ActorControllerBase newController;
+                BattleTurnType currentTurnType = TryGetCurrentBattleTurnType(actor, combat);
                 if (inputActive)
                 {
                     newController = Activator.CreateInstance(
@@ -571,6 +628,16 @@ namespace DD2SteamMultiplayerHost.Adapter
                 }
 
                 actor.SetActorController(newController);
+                // Replacing a controller during IN_TURN_SELECT normally
+                // loses the turn-type held by ActorControllerBase. Without
+                // restoring it, RefreshSkillMaps() sees a null turn type and
+                // all enemy skills appear grey/invalid to the pilot.
+                if (inputActive && currentTurnType != null && actor.Controller != null)
+                {
+                    actor.Controller.OnStartTurn(currentTurnType);
+                    Log("Restored current turn type for PVP enemy " + DescribeActor(actor) +
+                        ": " + currentTurnType + ".");
+                }
                 if (inputActive &&
                     actor.Controller != null)
                 {
@@ -586,6 +653,28 @@ namespace DD2SteamMultiplayerHost.Adapter
                 (restoredSystemSkills > 0 ? ", restoredSystemSkills=" + restoredSystemSkills : string.Empty) +
                 ".");
             return true;
+        }
+
+        private static BattleTurnType TryGetCurrentBattleTurnType(ActorInstance actor, CombatBhv combat)
+        {
+            if (actor == null || combat == null || combat.GetCurrentActor() == null ||
+                combat.GetCurrentActor().ActorGuid != actor.ActorGuid)
+            {
+                return null;
+            }
+
+            try
+            {
+                FieldInfo field = typeof(ActorInstance).GetField(
+                    "m_CurrentBattleTurnType",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                return field == null ? null : field.GetValue(actor) as BattleTurnType;
+            }
+            catch (Exception ex)
+            {
+                LogWarning("Failed to read current turn type for PVP enemy " + DescribeActor(actor) + ": " + ex.Message + ".");
+                return null;
+            }
         }
 
         private static bool EnsureEnemySystemCombatSkills(ActorInstance actor, bool refreshCurrentController)
